@@ -1,0 +1,39 @@
+{
+  "name": "unbound-screening",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "db:reset": "supabase db reset && tsx scripts/seed-screening.ts",
+    "seed:screening": "tsx scripts/seed-screening.ts",
+    "test": "tsx evals/unit/screening-evaluate.test.ts && tsx evals/unit/screening-library.test.ts && tsx evals/unit/screening-baseline.test.ts && tsx evals/unit/screening-bands.test.ts && tsx evals/unit/reference-rules.test.ts && tsx evals/unit/screening-chart.test.ts && tsx evals/unit/screening-derive.test.ts && tsx evals/unit/screening-population.test.ts",
+    "test:screening": "tsx evals/screening.test.ts"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.12.5",
+    "@supabase/supabase-js": "^2.113.0",
+    "next": "^16.3.4",
+    "next-intl": "^4.14.2",
+    "pg": "^8.23.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/node": "^26.4.1",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "eslint": "^9.39.5",
+    "eslint-config-next": "^16.3.4",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.23.13",
+    "typescript": "^6.0.3"
+  }
+}

@@ -2,30 +2,64 @@
 
 Screening en performancediagnostiek. Deelt de databank met `athlete-intake`, deelt geen code.
 
-Deze repo is nog leeg. Dat is met opzet: de code mag er pas in als de opschoonronde af is, want
-wat in de eerste commit zit blijft in de geschiedenis staan.
+Gekopieerd uit `athlete-intake` en niet gedeeld, omdat de intake wordt overgedragen aan de klant en
+de screening niet. De prijs daarvan staat vast en hoort geaccepteerd te worden: een fix in
+`lib/db/sql.ts` moet twee keer gebeuren. Zie `docs/screening-app.md` in die repo.
 
-## Wat hier komt
+## Opzetten
 
-30 bestanden uit `athlete-intake`, plus 15 gedeelde bestanden die gekopieerd worden in plaats van
-gedeeld. De volledige inventaris staat in `docs/splitsing.md` van die repo, met per bestand het
-aantal regels en waarom het mee moet.
+```bash
+cp lib/screening/afkapwaarden.voorbeeld.ts lib/screening/afkapwaarden.ts
+npm install
+npm run typecheck
+npm test
+```
 
-Acht migraties verhuizen mee, van `20261009090000` tot en met `20261011100000`. De databank blijft
-dezelfde: eigendom per tabel, met een `baseline.sql` voor lokaal ontwikkelen. Zie `screening-app.md`
-§2b in `athlete-intake`.
+De echte afkapwaarden staan niet in git. Zonder dat kopieertje bouwt de app niet, en dat is met
+opzet: wat in de eerste commit zit, staat er voorgoed in.
 
-## Wat er eerst af moet
+## De afkapwaarden
 
-1. De afkapwaarden uit `lib/screening/library.ts` naar een seed die niet in git staat. Het gaat om
-   17 bandenarrays en 72 drempelwaarden, afkomstig uit de Screening 2025-bestanden van de praktijk.
-2. De Supabase-projectverwijzing uit `vercel.json` naar een env-variabele.
-3. Een beslissing over een eigen databankrol, `screening_server` of dezelfde `intake_server`.
+`lib/screening/library.ts` is opgeknipt in drie stukken:
 
-## Privé, voorlopig
+| Bestand | Wat erin staat | In git |
+|---|---|---|
+| `libraryShape.ts` | types, de `simple()`-helper, de bronverwijzing | ja |
+| `afkapwaarden.ts` | de testbibliotheek van de praktijk: 26 tests, 21 regels | **nee** |
+| `library.ts` | samenstellen en valideren | ja |
 
-`overdracht.md` zegt dat deze repo publiek wordt. Die afspraak is van vóór de change request over de
-testbibliotheek, waarin de benchmarks en de interne asymmetriegrenzen van de praktijk staan.
+`afkapwaarden.voorbeeld.ts` staat er wel in, met drie verzonnen tests. Genoeg om te bouwen en de
+validator te draaien, niet genoeg om iets over de praktijk te weten.
 
-Zet hem pas publiek als punt 1 tot 3 af zijn en als de praktijk weet dat haar protocol en haar
-benchmarks naar buiten gaan. Een repo die eenmaal publiek is geweest, is gekopieerd.
+`library.ts` exporteert `AFKAPWAARDEN_AANWEZIG`. De bibliotheektest keurt daarmee alleen de echte
+data als die er is; de validator zelf wordt altijd getest.
+
+## Voordat deze repo publiek wordt
+
+1. **Vier bandgrenzen zitten nog in testfixtures.** `evals/unit/screening-bands.test.ts` regel 23 tot
+   26 en 116 tot 117, en `evals/unit/screening-evaluate.test.ts` regel 23 tot 26. Het zijn de
+   grenzen van de passieve SLR, gebruikt als voorbeeld. Vervang ze door neutrale getallen en
+   controleer dat beide tests nog slagen.
+2. **De Supabase-projectverwijzing.** Stond in `vercel.json` van de intake, in de CSP. Hier is nog
+   geen deployconfiguratie; zet de projecturl als env-variabele zodra die er komt.
+3. **De praktijk moet het weten.** Het protocol en de benchmarks komen uit haar eigen bestanden. Dat
+   is geen formaliteit.
+
+## Databank
+
+Dezelfde Supabase als de intake. Eigendom per tabel: alles onder `medical.screening_*` en de
+bibliotheektabellen in `public` horen hier, de intaketabellen daar, en `athletes`, `profiles` en
+`audit_log` zijn gedeeld.
+
+De acht migraties in `supabase/migrations/` zijn hier gekopieerd en staan nog steeds ook in
+`athlete-intake`. Dat moet nog uit elkaar, samen met een `baseline.sql` voor lokaal ontwikkelen.
+Zie §2b van `screening-app.md`.
+
+**Nog niet beslist:** een eigen databankrol `screening_server`, of dezelfde `intake_server` als de
+intake. Zie §2 van hetzelfde document.
+
+## Wat hier niet in zit
+
+De intake: het dossier, de chat, de documenten, het rapport van de intake. `lib/db/athletes.ts` is
+hier een uitgeklede kopie die alleen de identiteit en de populatievelden ophaalt, zonder de intakes
+en zonder het dossier.

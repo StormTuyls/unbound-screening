@@ -23,3 +23,7 @@ evals/fixtures/real/
 .DS_Store
 .vercel
 .env*
+
+# Afkapwaarden van de praktijk. Komen uit de Screening 2025-bestanden en horen
+# niet in een repo die publiek kan worden. Zie afkapwaarden.voorbeeld.ts.
+lib/screening/afkapwaarden.ts
