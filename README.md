@@ -58,6 +58,20 @@ Zie §2b van `screening-app.md`.
 **Nog niet beslist:** een eigen databankrol `screening_server`, of dezelfde `intake_server` als de
 intake. Zie §2 van hetzelfde document.
 
+### Deze repo bezit purge_athlete
+
+Het wissen van een atleet loopt via `medical.purge_athlete()`. Die functie begon in de intake, maar
+`20261009090300_screening_purge.sql` doet er een `create or replace` overheen die de
+screeningtabellen meetelt. Die migratie hoort hier, dus die versie is van deze repo.
+
+De drie screeningtabellen hangen met `athlete_id ... on delete cascade` aan `public.athletes`. Het
+wissen gebeurt dus in de databank en niet in applicatiecode, aan geen van beide kanten.
+
+**Afspraak:** alleen deze repo herdefinieert `purge_athlete`. De json die hij teruggeeft is het
+contract met de intake; daar staat het als `PurgeCounts` in `lib/purge/db.ts`. Verandert de vorm,
+dan verandert dat type mee. Een veld weghalen zonder dat de intake het weet geeft daar `undefined`
+en geen foutmelding.
+
 ## Wat hier niet in zit
 
 De intake: het dossier, de chat, de documenten, het rapport van de intake. `lib/db/athletes.ts` is
