@@ -77,8 +77,14 @@ export default async function ScreeningSessionPage({
     (a, b) => (order.indexOf(a[0]) + 1 || 99) - (order.indexOf(b[0]) + 1 || 99),
   );
 
+  // Ook de genormaliseerde rijen: die kunnen een band dragen, dus een band die
+  // ontbreekt zegt daar hetzelfde als bij een gemeten waarde. Asymmetrie en
+  // delta tellen niet mee, die hebben er per ontwerp geen.
   const unclassified = session.results.filter(
-    (r) => r.kind === "absolute" && r.status === "computed" && r.bandStatus === null,
+    (r) =>
+      (r.kind === "absolute" || r.kind === "normalised") &&
+      r.status === "computed" &&
+      r.bandStatus === null,
   ).length;
 
   // Een regel per test, niet per rij: links en rechts delen hun referentieregel.
@@ -168,7 +174,16 @@ export default async function ScreeningSessionPage({
                   {/* Het getal eerst, dan pas de duiding. Spec §11. */}
                   {row.status === "computed" && row.value !== null ? (
                     <span className="text-sm tabular-nums">
-                      {row.value.toFixed(row.kind === "absolute" ? row.decimals : 1)}
+                      {row.value.toFixed(
+                        // Een genormaliseerde waarde is een absolute waarde van
+                        // een eigen metriek en heeft dus haar eigen precisie:
+                        // 2,85 xBW op een decimaal is 2,9 en dat is een andere
+                        // band. Alleen een delta en een asymmetrie zijn altijd
+                        // procenten.
+                        row.kind === "absolute" || row.kind === "normalised"
+                          ? row.decimals
+                          : 1,
+                      )}
                       <span className="text-ink-faint">
                         {UNIT_SUFFIX[row.unit] ?? ` ${row.unit}`}
                       </span>
@@ -199,6 +214,15 @@ export default async function ScreeningSessionPage({
                       {typeof row.inputs?.previous === "number"
                         ? t("was", { value: row.inputs.previous })
                         : t("protocolChanged")}
+                    </span>
+                  )}
+
+                  {/* Dezelfde reden als hierboven: zonder de massa erbij is
+                      8,5 N/kg niet na te rekenen, en hij verschuift stil mee
+                      met het gewicht van de atleet. */}
+                  {row.kind === "normalised" && row.inputs && (
+                    <span className="text-xs whitespace-nowrap text-ink-faint tabular-nums">
+                      {row.inputs.source ?? "-"} N · {row.inputs.bodyMassKg ?? "-"} kg
                     </span>
                   )}
 

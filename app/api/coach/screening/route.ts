@@ -111,6 +111,11 @@ export async function POST(request: Request) {
       history,
       `${input.occurredOn}T00:00:00.000Z`,
       recordedAt,
+      // De massa van DEZE sessie, niet uit het profiel: spec §8 wil het gewicht
+      // van die dag, zodat een oud rapport niet verandert als de atleet aankomt.
+      // De lengte staat wel in de tabel maar wordt nog nergens ingevuld; zolang
+      // dat zo is levert perBodyHeight eerlijk no_body_height.
+      { bodyMassKg: input.bodyMassKg, bodyHeightCm: null },
     );
 
     const sessionId = await createSession(

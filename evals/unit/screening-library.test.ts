@@ -112,6 +112,44 @@ const broken: Array<[string, (l: Library) => void, RegExp]> = [
     (l) => { l.rules[0].bands = [{ status: "a", lt: 20 }, { status: "b", gte: 10 }]; },
     /overlappen/,
   ],
+  // De genormaliseerde metrieken van de performancebatterij. Geen van deze drie
+  // fouten laat iets vallen: ze leveren een rij op die altijd op unavailable
+  // staat, en dat leest als een ontbrekende meting in plaats van een kapotte
+  // definitie.
+  [
+    "genormaliseerd vanuit een metriek die niet bestaat",
+    (l) => {
+      l.metrics.push({
+        key: "t.a.per_kg", testKey: "t.a", labelNl: "A/kg", labelEn: "A/kg",
+        unit: "n_per_kg", direction: "higher_better", isCore: false, decimals: 2,
+        derivedFrom: { metricKey: "t.weg", derivedKey: "per_body_mass" },
+      });
+    },
+    /afgeleid van een onbekende metriek/,
+  ],
+  [
+    "genormaliseerd vanuit graden in plaats van newton",
+    (l) => {
+      l.metrics.push({
+        key: "t.a.per_kg", testKey: "t.a", labelNl: "A/kg", labelEn: "A/kg",
+        unit: "n_per_kg", direction: "higher_better", isCore: false, decimals: 2,
+        derivedFrom: { metricKey: "t.a.value", derivedKey: "per_body_mass" },
+      });
+    },
+    /staat in deg, normaliseren vraagt n/,
+  ],
+  [
+    "per_body_mass met xbw als eenheid",
+    (l) => {
+      l.metrics[0].unit = "n";
+      l.metrics.push({
+        key: "t.a.per_kg", testKey: "t.a", labelNl: "A/kg", labelEn: "A/kg",
+        unit: "xbw", direction: "higher_better", isCore: false, decimals: 2,
+        derivedFrom: { metricKey: "t.a.value", derivedKey: "per_body_mass" },
+      });
+    },
+    /levert n_per_kg, niet xbw/,
+  ],
 ];
 
 for (const [name, mutate, expected] of broken) {

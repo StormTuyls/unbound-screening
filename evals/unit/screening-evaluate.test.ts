@@ -233,9 +233,145 @@ const PROTO = "protocol-v1";
   assert.equal(delta.unavailableReason, "protocol_mismatch");
 }
 
+// ── 6. Normaliseren naar lichaamsmassa ───────────────────────────────────────
+//
+// De waarde is er, de deling hangt aan de sessie. Drie dingen kunnen hier stil
+// misgaan: de rij ontbreekt, hij landt op de verkeerde zijde, of hij komt zonder
+// massa toch met een getal terug.
+{
+  const nordic: MetricSpec = {
+    key: "hamstring.nordic.peak_force",
+    unit: "n",
+    direction: "higher_better",
+    perSide: true,
+    rule: null,
+  };
+  // Eigen sleutel, eigen eenheid, eigen regel. Giakoumis 2020 noemt 5,2 N/kg
+  // als gemiddelde van een eliteprogramma; de band eromheen is een beslissing
+  // van de praktijk en staat hier alleen als vorm.
+  const nordicPerKg: MetricSpec = {
+    key: "hamstring.nordic.per_kg",
+    unit: "n_per_kg",
+    direction: "higher_better",
+    perSide: true,
+    rule: {
+      id: 9,
+      layer: "published",
+      classificationEnabled: true,
+      coverage: "total",
+      bands: [
+        { status: "below", score: 0, lt: 5.2 },
+        { status: "at_or_above", score: 2, gte: 5.2 },
+      ],
+    },
+    derivedFrom: { metricKey: "hamstring.nordic.peak_force", derivedKey: "per_body_mass" },
+  };
+  const krachtSpecs = new Map([nordic, nordicPerKg].map((s) => [s.key, s]));
+
+  const metingen = [
+    { metricKey: nordic.key, side: "left" as const, value: 412, protocolId: PROTO },
+    { metricKey: nordic.key, side: "right" as const, value: 371, protocolId: PROTO },
+  ];
+
+  const rows = evaluate(metingen, krachtSpecs, new Map(), undefined, undefined, {
+    bodyMassKg: 78.4,
+    bodyHeightCm: null,
+  });
+
+  const links = rows.find((r) => r.kind === "normalised" && r.side === "left")!;
+  const rechts = rows.find((r) => r.kind === "normalised" && r.side === "right")!;
+
+  assert.ok(links && rechts, "elke gemeten zijde krijgt een genormaliseerde rij");
+  assert.equal(links.metricKey, nordicPerKg.key, "de rij draagt de EIGEN sleutel");
+  assert.equal(links.sourceMetricKey, nordic.key, "en wijst naar de meting waar hij uit volgt");
+  assert.equal(links.unit, "n_per_kg");
+  assert.equal(links.derivedKey, "per_body_mass");
+
+  // 412 / 78,4 = 5,255..., net boven de drempel; 371 / 78,4 = 4,732..., eronder.
+  // Precies het geval waar afronden naar een decimaal de band zou omdraaien.
+  assert.ok(Math.abs(links.value! - 5.2551) < 0.001, "links 412 N op 78,4 kg");
+  assert.equal(links.bandStatus, "at_or_above", "en dus boven de drempel");
+  assert.equal(links.referenceRuleId, 9, "de band draagt de regel die hem gaf");
+  assert.equal(rechts.bandStatus, "below", "rechts eronder, bij dezelfde massa");
+
+  // Spec §11: zonder de noemer is 5,26 N/kg niet na te rekenen.
+  assert.equal(links.inputs.source, 412);
+  assert.equal(links.inputs.bodyMassKg, 78.4);
+
+  // De ruwe rijen blijven gewoon staan: normaliseren is een rij ERBIJ.
+  assert.equal(
+    rows.filter((r) => r.kind === "absolute").length,
+    2,
+    "de newton verdwijnt niet uit het rapport",
+  );
+}
+
+// Zonder massa: een rij met een reden, geen ontbrekende rij en geen stil getal.
+{
+  const push: MetricSpec = {
+    key: "forcedecks.ankle_iso_push.peak_force",
+    unit: "n",
+    direction: "higher_better",
+    perSide: true,
+    rule: null,
+  };
+  const perBw: MetricSpec = {
+    key: "forcedecks.ankle_iso_push.per_bw",
+    unit: "xbw",
+    direction: "higher_better",
+    perSide: true,
+    rule: null,
+    derivedFrom: { metricKey: push.key, derivedKey: "per_body_weight" },
+  };
+  const specs2 = new Map([push, perBw].map((s) => [s.key, s]));
+
+  const rows = evaluate(
+    [{ metricKey: push.key, side: "left", value: 1719, protocolId: PROTO }],
+    specs2,
+  );
+
+  const rij = rows.find((r) => r.kind === "normalised")!;
+  assert.ok(rij, "de rij bestaat ook zonder lichaamsmassa");
+  assert.equal(rij.status, "unavailable");
+  assert.equal(rij.unavailableReason, "no_body_mass", "en zegt waarom");
+  assert.equal(rij.value, null, "geen verzonnen getal");
+  assert.equal(rij.bandStatus, null, "en dus geen band");
+}
+
+// xBW en N/kg zijn niet hetzelfde getal. Dezelfde kracht, twee schalen, een
+// factor g ertussen: units.ts weigert er met opzet een conversie tussen.
+{
+  const bron: MetricSpec = {
+    key: "test.force", unit: "n", direction: "higher_better", perSide: false, rule: null,
+  };
+  const perKg: MetricSpec = {
+    key: "test.per_kg", unit: "n_per_kg", direction: "higher_better", perSide: false,
+    rule: null, derivedFrom: { metricKey: bron.key, derivedKey: "per_body_mass" },
+  };
+  const perBw: MetricSpec = {
+    key: "test.per_bw", unit: "xbw", direction: "higher_better", perSide: false,
+    rule: null, derivedFrom: { metricKey: bron.key, derivedKey: "per_body_weight" },
+  };
+
+  const rows = evaluate(
+    [{ metricKey: bron.key, side: "bilateral", value: 981, protocolId: PROTO }],
+    new Map([bron, perKg, perBw].map((s) => [s.key, s])),
+    new Map(),
+    undefined,
+    undefined,
+    { bodyMassKg: 100, bodyHeightCm: null },
+  );
+
+  const kg = rows.find((r) => r.metricKey === perKg.key)!;
+  const bw = rows.find((r) => r.metricKey === perBw.key)!;
+  assert.ok(Math.abs(kg.value! - 9.81) < 0.001, "981 N op 100 kg is 9,81 N/kg");
+  assert.ok(Math.abs(bw.value! - 1.0) < 0.001, "en 1,0 x lichaamsgewicht");
+  assert.notEqual(kg.value, bw.value, "twee metrieken, twee getallen");
+}
+
 console.log(
   "screening-evaluate: band aan/uit, niet-gemeten blijft een rij, asymmetrie met richting, " +
-    "delta tegen de vorige sessie",
+    "delta tegen de vorige sessie, N/kg en xBW met hun noemer",
 );
 
 // De zijde hoort bij de sleutel. Zonder dat vergelijkt links met de vorige

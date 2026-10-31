@@ -42,18 +42,23 @@ async function main() {
     for (const t of LIBRARY.tests) {
       await db.query(
         `insert into public.test_definitions
-           (key, block, sort_order, label_nl, label_en, laterality, body_region, source_note)
-         values ($1, $2, $3, $4, $5, $6, $7, $8)
+           (key, block, sort_order, label_nl, label_en, laterality, domain,
+            body_region, source_note)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
          on conflict (key) do update set
            block = excluded.block,
            sort_order = excluded.sort_order,
            label_nl = excluded.label_nl,
            label_en = excluded.label_en,
            laterality = excluded.laterality,
+           domain = excluded.domain,
            body_region = excluded.body_region,
            source_note = excluded.source_note`,
+        // Weggelaten domain is klinisch: de 26 bestaande tests zijn dat allemaal
+        // en hoeven er niets over te zeggen. De kolom zelf heeft geen default,
+        // zodat dit de enige plek is waar die aanname staat.
         [t.key, t.block, t.sortOrder, t.labelNl, t.labelEn, t.laterality,
-         t.bodyRegion ?? null, t.sourceNote ?? null],
+         t.domain ?? "clinical", t.bodyRegion ?? null, t.sourceNote ?? null],
       );
     }
 
@@ -70,20 +75,34 @@ async function main() {
       );
     }
 
-    for (const m of LIBRARY.metrics) {
+    // Ruwe metrieken eerst. Een afgeleide verwijst met een foreign key naar haar
+    // bron, dus die moet er al staan, en de volgorde binnen afkapwaarden.ts
+    // hoort daar niet over te gaan.
+    const metrieken = [
+      ...LIBRARY.metrics.filter((m) => !m.derivedFrom),
+      ...LIBRARY.metrics.filter((m) => m.derivedFrom),
+    ];
+
+    for (const m of metrieken) {
       await db.query(
         `insert into public.metric_definitions
-           (key, test_key, kind, label_nl, label_en, unit, direction, is_core, decimals)
-         values ($1, $2, 'raw', $3, $4, $5, $6, $7, $8)
+           (key, test_key, kind, label_nl, label_en, unit, direction, is_core,
+            decimals, derived_key, derived_from_key)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          on conflict (key) do update set
            test_key = excluded.test_key,
+           kind = excluded.kind,
            label_nl = excluded.label_nl,
            label_en = excluded.label_en,
            unit = excluded.unit,
            direction = excluded.direction,
            is_core = excluded.is_core,
-           decimals = excluded.decimals`,
-        [m.key, m.testKey, m.labelNl, m.labelEn, m.unit, m.direction, m.isCore, m.decimals],
+           decimals = excluded.decimals,
+           derived_key = excluded.derived_key,
+           derived_from_key = excluded.derived_from_key`,
+        [m.key, m.testKey, m.derivedFrom ? "derived" : "raw", m.labelNl, m.labelEn,
+         m.unit, m.direction, m.isCore, m.decimals,
+         m.derivedFrom?.derivedKey ?? null, m.derivedFrom?.metricKey ?? null],
       );
     }
 

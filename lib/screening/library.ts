@@ -17,6 +17,7 @@ export type {
   MetricDef,
   RuleDef,
 } from "./libraryShape";
+export type { NormaliseKey } from "./derive";
 
 /** Staan de echte afkapwaarden erin, of het voorbeeld? */
 export const AFKAPWAARDEN_AANWEZIG = ECHT;
@@ -96,6 +97,31 @@ export function validateLibrary(library: Library = LIBRARY): string[] {
     // zou elke band omdraaien.
     if (m.unit === "score" && m.direction !== "higher_better") {
       errors.push(`metriek '${m.key}': een score hoort higher_better te zijn`);
+    }
+
+    // Een genormaliseerde metriek met een verkeerde bron of eenheid faalt niet,
+    // hij levert een rij op die altijd op unavailable staat. Dat leest als een
+    // ontbrekende meting terwijl het een ontbrekende definitie is, en daarom
+    // hoort het hier en niet pas in de motor.
+    if (m.derivedFrom) {
+      const bron = metrics.get(m.derivedFrom.metricKey);
+      if (!bron) {
+        errors.push(
+          `metriek '${m.key}': afgeleid van een onbekende metriek '${m.derivedFrom.metricKey}'`,
+        );
+      } else if (bron.unit !== "n") {
+        // perBodyMass en perBodyWeight eisen allebei newton. Dit vangt ook een
+        // keten: een bron die zelf genormaliseerd is staat in n_per_kg of xbw.
+        errors.push(
+          `metriek '${m.key}': de bron '${bron.key}' staat in ${bron.unit}, normaliseren vraagt n`,
+        );
+      }
+      const verwacht = m.derivedFrom.derivedKey === "per_body_mass" ? "n_per_kg" : "xbw";
+      if (m.unit !== verwacht) {
+        errors.push(
+          `metriek '${m.key}': ${m.derivedFrom.derivedKey} levert ${verwacht}, niet ${m.unit}`,
+        );
+      }
     }
   }
 

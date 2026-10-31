@@ -51,18 +51,24 @@ export default async function NewScreeningPage({
   const t = await getTranslations("screening");
   const locale = await getLocale();
 
-  const tests: EntryTest[] = library.map((item) => ({
-    testKey: item.testKey,
-    block: item.block,
-    label: locale === "nl" ? item.labelNl : item.labelEn,
-    metricKey: item.metricKey,
-    unit: item.unit,
-    perSide: item.laterality === "per_side",
-    decimals: item.decimals,
-    classifies: item.rule?.classificationEnabled ?? false,
-    protocolConfirmed: item.protocolConfirmed,
-    note: item.ruleNote,
-  }));
+  // Afgeleide metrieken staan wel in de bibliotheek, want de rekenmotor heeft
+  // hun regel en eenheid nodig, maar horen niet in een invoerformulier: niemand
+  // typt N/kg met de hand in, en een veld ervoor nodigt uit tot een waarde die
+  // de motor meteen overschrijft.
+  const tests: EntryTest[] = library
+    .filter((item) => item.derivedFrom === null)
+    .map((item) => ({
+      testKey: item.testKey,
+      block: item.block,
+      label: locale === "nl" ? item.labelNl : item.labelEn,
+      metricKey: item.metricKey,
+      unit: item.unit,
+      perSide: item.laterality === "per_side",
+      decimals: item.decimals,
+      classifies: item.rule?.classificationEnabled ?? false,
+      protocolConfirmed: item.protocolConfirmed,
+      note: item.ruleNote,
+    }));
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-10">

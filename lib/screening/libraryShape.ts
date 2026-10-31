@@ -1,4 +1,5 @@
 import { type Band, validateBands } from "./bands";
+import type { NormaliseKey } from "./derive";
 import type { Direction } from "./direction";
 import type { TrialSelection } from "./selection";
 import type { Unit } from "./units";
@@ -31,9 +32,17 @@ export interface TestDef {
   labelNl: string;
   labelEn: string;
   laterality: "bilateral" | "per_side" | "either";
+  /**
+   * Welke batterij. Weggelaten betekent `clinical`: dat is wat deze bibliotheek
+   * bij haar eerste versie bevatte, en zo hoeven de bestaande tests niet
+   * aangeraakt te worden. De databank kent die uitweg niet, daar is de kolom
+   * verplicht en zonder default.
+   */
+  domain?: "clinical" | "performance";
   bodyRegion?: string;
   sourceNote?: string;
 }
+
 
 export interface ProtocolDef {
   testKey: string;
@@ -58,6 +67,14 @@ export interface MetricDef {
   direction: Direction;
   isCore: boolean;
   decimals: number;
+  /**
+   * Deze metriek wordt niet gemeten maar gerekend, uit een andere metriek.
+   *
+   * De formule staat al in derive.ts en de databank bewaart hem als
+   * derived_key; wat ontbrak is waar de invoer vandaan komt. "De ruwe metriek
+   * van dezelfde test" is geen antwoord zodra een test er meer dan een heeft.
+   */
+  derivedFrom?: { metricKey: string; derivedKey: NormaliseKey };
 }
 
 export interface RuleDef {

@@ -20,7 +20,16 @@ import { createHash } from "node:crypto";
  * een query nodig heeft om zichzelf te tonen is geen vastlegging.
  */
 
-export const SCREENING_SNAPSHOT_VERSION = 1;
+/**
+ * 2 sinds de genormaliseerde uitkomsten.
+ *
+ * Een snapshot van versie 1 blijft geldig en leesbaar: er is niets uit weg.
+ * Andersom niet, en daar gaat dit nummer over. Een rij met kind "normalised"
+ * of met inputs {source, bodyMassKg} bestond in versie 1 niet, dus een
+ * renderer die alleen versie 1 kent hoort te weigeren in plaats van de rij als
+ * een delta te tonen.
+ */
+export const SCREENING_SNAPSHOT_VERSION = 2;
 
 export interface SnapshotResult {
   metricKey: string;
@@ -28,7 +37,7 @@ export interface SnapshotResult {
   testLabelEn: string;
   block: string;
   side: string;
-  kind: "absolute" | "asymmetry" | "delta";
+  kind: "absolute" | "asymmetry" | "delta" | "normalised";
   value: number | null;
   unit: string;
   decimals: number;
