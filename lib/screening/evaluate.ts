@@ -1,6 +1,13 @@
 import { type Band, type ClassifiableRule, classify } from "./bands";
 import { type HistoryPoint, compare } from "./baseline";
-import { ENGINE_VERSION, asymmetry } from "./derive";
+import {
+  ENGINE_VERSION,
+  type NormaliseKey,
+  type SessionContext,
+  asymmetry,
+  perBodyMass,
+  perBodyWeight,
+} from "./derive";
 import type { Direction } from "./direction";
 import { type Measured, fromNullable } from "./measured";
 import type { Unit } from "./units";
@@ -16,11 +23,13 @@ import type { Unit } from "./units";
  * "For bilateral tests, show L and R on the same scale, plus asymmetry magnitude
  * and direction."
  *
- * Wat deze versie NIET doet: normaliseren naar lichaamsmassa (N/kg, xBW), LSI,
- * en ratio's. Niet omdat ze ontbreken in derive.ts, maar omdat de geseede §6-set
- * er geen enkele afnemer voor heeft: er zit geen classificerende krachtmetriek
- * in, en LSI vraagt een aangedane zijde die pas uit een lopende klacht komt.
- * Ze komen erbij met de tests die ze nodig hebben.
+ * Daar komt normaliseren naar lichaamsmassa bij: N/kg en xBW, elk als een eigen
+ * metriek met een eigen sleutel, eenheid en regel. Zie het blok onderaan.
+ *
+ * Wat deze versie NIET doet: LSI en ratio's. Niet omdat ze ontbreken in
+ * derive.ts, maar omdat er nog geen afnemer voor is: LSI vraagt een aangedane
+ * zijde die pas uit een lopende klacht komt, en de twee ratio's uit de change
+ * request (Add:Abd, transfer-RSI) wachten op de heup- en sprongmetrieken.
  */
 
 export type Side = "left" | "right" | "bilateral" | "unknown";
@@ -33,6 +42,15 @@ export interface MetricSpec {
   perSide: boolean;
   /** De geldende regel, of null als er geen is. */
   rule: (ClassifiableRule & { id: number; layer: "published" | "internal_target" }) | null;
+  /**
+   * Deze metriek wordt gerekend uit een andere, niet gemeten.
+   *
+   * Null of weggelaten voor een gewone gemeten metriek. De bron staat erbij
+   * omdat "de ruwe metriek van dezelfde test" geen antwoord is zodra een test
+   * er meer dan een heeft: de ankle iso-push levert piekkracht, kracht op
+   * 100 ms en RFD, en alleen de eerste hoort genormaliseerd te worden.
+   */
+  derivedFrom?: { metricKey: string; derivedKey: NormaliseKey } | null;
 }
 
 export interface MeasurementInput {
@@ -60,7 +78,19 @@ export function historyKey(metricKey: string, side: Side): string {
 export interface ResultRow {
   metricKey: string;
   side: Side;
-  kind: "absolute" | "asymmetry" | "delta";
+  /**
+   * `normalised` is een absolute waarde van een eigen metriek, alleen gerekend
+   * in plaats van gemeten. Hij staat apart omdat de opslaglaag hem anders
+   * behandelt dan een asymmetrie: hij hoort wel bij een zijde en dus bij een
+   * test_item, en zijn metriek staat niet in de ingevoerde metingen.
+   */
+  kind: "absolute" | "asymmetry" | "delta" | "normalised";
+  /**
+   * De gemeten metriek waaruit deze rij volgt, voor `normalised`. Null voor de
+   * rest. De opslaglaag heeft hem nodig om het juiste test_item te vinden: de
+   * metriek van de rij zelf komt in de invoer niet voor.
+   */
+  sourceMetricKey: string | null;
   value: number | null;
   unit: Unit;
   status: "computed" | "unavailable";
@@ -91,6 +121,7 @@ function absoluteRow(
     metricKey: spec.key,
     side: m.side,
     kind: "absolute",
+    sourceMetricKey: null,
     value: measured.ok ? measured.value : null,
     unit: spec.unit,
     status: measured.ok ? "computed" : "unavailable",
@@ -117,6 +148,16 @@ const NO_RULE: ClassifiableRule = {
   classificationEnabled: false,
 };
 
+/**
+ * Geen lichaamsmaten bekend.
+ *
+ * Elke normalisatie levert dan een rij met no_body_mass, en dat is het eerlijke
+ * antwoord: de meting is er, de deling niet. Het alternatief, de rij weglaten,
+ * zou "niet te normaliseren" niet te onderscheiden maken van "deze test heeft
+ * geen N/kg", precies het onderscheid dat measurements.value nullable maakt.
+ */
+const NO_CONTEXT: SessionContext = { bodyMassKg: null, bodyHeightCm: null };
+
 export function evaluate(
   measurements: readonly MeasurementInput[],
   specs: ReadonlyMap<string, MetricSpec>,
@@ -124,6 +165,12 @@ export function evaluate(
   occurredAt: string = new Date().toISOString(),
   /** Invoermoment, alleen om gelijke stand te breken. Zie baseline.ts. */
   recordedAt: string = new Date().toISOString(),
+  /**
+   * De lichaamsmaten van DEZE sessie, niet uit het profiel. Spec §8 wil de
+   * massa van die dag: normaliseren tegen het gewicht van vandaag zou een oud
+   * rapport laten veranderen.
+   */
+  ctx: SessionContext = NO_CONTEXT,
 ): ResultRow[] {
   const rows: ResultRow[] = [];
 
@@ -159,6 +206,7 @@ export function evaluate(
       metricKey: spec.key,
       side: m.side,
       kind: "delta",
+      sourceMetricKey: null,
       value: self.change.ok ? self.change.value : null,
       unit: "percent",
       status: self.change.ok ? "computed" : "unavailable",
@@ -178,6 +226,60 @@ export function evaluate(
         current: m.value,
       },
     });
+  }
+
+  // ── Genormaliseerde uitkomsten ─────────────────────────────────────────────
+  //
+  // N/kg en xBW zijn eigen metrieken met een eigen sleutel, eenheid en regel, en
+  // leveren dus een eigen rij op. Niet een tweede getal op de ruwe rij: een band
+  // op 8,5 N/kg is iets anders dan een band op 746 N, en op een gedeelde rij is
+  // achteraf niet te zien welke van de twee de kleur gaf.
+  //
+  // Geen deltarij: die wordt hierboven per GEMETEN waarde gemaakt en een
+  // genormaliseerde metriek wordt niet gemeten. Het verloop ervan komt uit de
+  // opgeslagen rijen, via getTrends.
+  for (const spec of specs.values()) {
+    const from = spec.derivedFrom;
+    if (!from) continue;
+    const bron = specs.get(from.metricKey);
+    // validateLibrary() vangt dit bij het seeden, met de metrieksleutel erbij.
+    // Hier is stil overslaan beter dan vallen: één verkeerde definitie hoort de
+    // rest van de screening niet mee te nemen.
+    if (!bron) continue;
+
+    for (const m of measurements) {
+      if (m.metricKey !== from.metricKey) continue;
+
+      const source = fromNullable(m.value, bron.unit);
+      const out =
+        from.derivedKey === "per_body_mass"
+          ? perBodyMass(source, ctx)
+          : perBodyWeight(source, ctx);
+      const value = out.ok ? out.value : null;
+      const band = classify(value, spec.rule ?? NO_RULE);
+
+      rows.push({
+        metricKey: spec.key,
+        side: m.side,
+        kind: "normalised",
+        sourceMetricKey: from.metricKey,
+        value,
+        unit: spec.unit,
+        status: out.ok ? "computed" : "unavailable",
+        unavailableReason: out.ok ? null : out.reason,
+        derivedKey: from.derivedKey,
+        derivedVersion: 1,
+        engineVersion: ENGINE_VERSION,
+        referenceRuleId: band.ok && spec.rule ? spec.rule.id : null,
+        referenceLayer: band.ok && spec.rule ? spec.rule.layer : null,
+        bandStatus: band.ok ? band.status : null,
+        bandScore: band.ok ? band.score : null,
+        // Teller en noemer naast de uitkomst, spec §11. Zonder de massa erbij is
+        // 8,5 N/kg niet na te rekenen, en verandert hij stil mee met het gewicht
+        // van de atleet zonder dat iemand ziet waarom.
+        inputs: { source: m.value, bodyMassKg: ctx.bodyMassKg },
+      });
+    }
   }
 
   // Asymmetrie per metriek die links en rechts heeft.
@@ -206,6 +308,7 @@ export function evaluate(
       // De uitkomst hoort bij geen van beide zijden.
       side: "bilateral",
       kind: "asymmetry",
+      sourceMetricKey: null,
       value: result.ok ? result.value : null,
       unit: "percent",
       status: result.ok ? "computed" : "unavailable",

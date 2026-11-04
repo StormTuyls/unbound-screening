@@ -1,0 +1,44 @@
+import { getTranslations } from "next-intl/server";
+import { CoachNav } from "@/components/coach/CoachNav";
+import { PRACTICE_NAME } from "@/lib/report/branding";
+
+/**
+ * De schil om de coachschermen.
+ *
+ * Een routegroep en geen app/coach/layout.tsx, want twee schermen horen er
+ * juist niet in te zitten. Het inlogscherm is donker en paginavullend, en een
+ * navigatiebalk met "Atleten · Bibliotheek" boven een inlogformulier belooft
+ * iemand die nog niet binnen is dingen die hij niet kan openen. Dat scherm
+ * staat daarom buiten de groep.
+ *
+ * De afdrukpagina zit er wel in: op het scherm is de balk daar bruikbaar, en op
+ * papier haalt no-print hem eraf. Zonder die klasse zou hij meeprinten, want
+ * het printblok in globals.css spaart alles wat .report bevat, en dat is dan
+ * ook deze wikkel.
+ *
+ * De container stond vijf keer letterlijk in de pagina's. Hier staat hij een
+ * keer.
+ */
+export default async function CoachLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const t = await getTranslations("titles");
+  const tl = await getTranslations("library");
+  const tc = await getTranslations("coach");
+
+  return (
+    <>
+      <CoachNav
+        practice={PRACTICE_NAME}
+        items={[
+          { href: "/coach", label: t("athletes") },
+          { href: "/coach/library", label: tl("title") },
+        ]}
+        signOut={tc("signOut")}
+      />
+      <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>
+    </>
+  );
+}

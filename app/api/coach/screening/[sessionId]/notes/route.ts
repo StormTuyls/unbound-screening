@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { badRequest, handleError } from "@/lib/http";
+import { apiMessages } from "@/lib/i18n/server";
 import { isUuid, requireCoach } from "@/lib/review/access";
 import { getSession } from "@/lib/db/screening";
 import { addNote, resolveNote } from "@/lib/db/screeningNotes";
@@ -34,9 +35,10 @@ export async function POST(
   context: { params: Promise<{ sessionId: string }> },
 ) {
   try {
+    const t = await apiMessages();
     const { sessionId } = await context.params;
     if (!isUuid(sessionId)) {
-      return NextResponse.json({ error: "not found" }, { status: 404 });
+      return NextResponse.json({ error: t("notFound") }, { status: 404 });
     }
 
     const coach = await requireCoach();
@@ -59,7 +61,7 @@ export async function POST(
     // athlete_id nodig: een opmerking hangt aan de atleet, zodat hij ook na het
     // verwijderen van een sessie meegaat in het verwijderpad.
     const session = await getSession(sessionId, { id: coach.id });
-    if (!session) return NextResponse.json({ error: "not found" }, { status: 404 });
+    if (!session) return NextResponse.json({ error: t("notFound") }, { status: 404 });
 
     const id = await addNote(
       {

@@ -68,15 +68,16 @@ export default async function ScreeningTrendPage({
   );
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <Link href={`/coach/athletes/${athleteId}`} className="text-xs text-ink-muted underline">
-        {athlete.name ?? t("backToAthlete")}
-      </Link>
-
-      <header className="mt-3 mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight">{t("trend")}</h1>
+    <>
+      {/* De naam stond in een terugkoppeling naar /coach/athletes/<id>, en die
+          route bestaat niet. Hij hoort ook niet in een link: dit IS de pagina
+          van deze atleet, dus hij is de kop. */}
+      <header className="mb-8">
+        <h1 className="text-2xl font-semibold tracking-tight">
+          {athlete.name ?? t("trend")}
+        </h1>
         <p className="mt-1 text-sm text-ink-muted">
-          {t("sessionsCount", { count: sessions.length })}
+          {t("trend")} · {t("sessionsCount", { count: sessions.length })}
         </p>
         <p className="mt-2 max-w-prose text-xs text-ink-faint">{t("trendIntro")}</p>
       </header>
@@ -158,6 +159,6 @@ export default async function ScreeningTrendPage({
           </section>
         ))
       )}
-    </main>
+    </>
   );
 }

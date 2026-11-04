@@ -54,7 +54,12 @@
   },
   "errors": {
     "generic": "Er ging iets mis",
-    "fileKept": "Het bestand is bewaard, er is niets verloren"
+    "fileKept": "Het bestand is bewaard, er is niets verloren",
+    "loading": "Bezig met laden",
+    "retry": "Opnieuw proberen",
+    "notFound": "Deze pagina bestaat niet",
+    "notFoundNote": "De link klopt niet, of het dossier is verwijderd.",
+    "backToAthletes": "Terug naar de atleten"
   },
   "sharing": {
     "title": "Voordat je dit naar je coach stuurt",
@@ -341,6 +346,9 @@
     "usePost": "Gebruik POST om een intake te starten.",
     "intakeNotFound": "Intake niet gevonden.",
     "athleteNotFound": "Atleet niet gevonden.",
+    "screeningInvalid": "Deze screening is niet volledig of niet geldig.",
+    "screeningUnknownMetric": "Onbekende metriek: {key}. Ververs de pagina, de bibliotheek is mogelijk gewijzigd.",
+    "screeningNoMeasurements": "Vul minstens één meting in.",
     "nameMismatch": "De ingetypte naam klopt niet met deze atleet.",
     "approvedLocked": "Dit dossier is goedgekeurd en niet meer te wijzigen.",
     "alreadyApproved": "Deze intake is al goedgekeurd.",
@@ -712,5 +720,33 @@
     "invitationSent": "Uitnodiging gemaild naar {name}.",
     "invitationNotMailed": "Account gemaakt voor {name}, maar de mail kon niet verstuurd worden.",
     "linkIfNotArrived": "Komt hij niet aan, dan werkt deze link. Hij staat alleen hier."
+  },
+  "athletes": {
+    "title": "Atleten",
+    "activeFiles": "{count, plural, one {# actief dossier} other {# actieve dossiers}}",
+    "thisMonth": "Deze maand",
+    "thisMonthNote": "screenings · vorige maand {n}",
+    "overdue": "Langer dan {days} dagen",
+    "overdueNote": "atleten zonder nieuwe meting",
+    "openFlags": "Open vlaggen",
+    "openFlagsNote": "bij {count, plural, one {# atleet} other {# atleten}}",
+    "lastScreened": "Laatst gescreend",
+    "sortNote": "Wie het langst wacht staat bovenaan",
+    "searchPlaceholder": "Zoek op naam",
+    "searchLabel": "Zoek atleten op naam",
+    "colAthlete": "Atleet",
+    "colLast": "Laatste screening",
+    "colFlags": "Vlaggen",
+    "colAction": "Actie",
+    "nameUnknown": "Naam onbekend",
+    "years": "{n} j",
+    "never": "nog niet gescreend",
+    "daysAgo": "{count, plural, one {# dag} other {# dagen}}",
+    "flagsOpen": "{count} open",
+    "noFlags": "geen",
+    "report": "Rapport",
+    "enter": "Invoeren",
+    "none": "Nog geen atleten.",
+    "noMatch": "Geen atleten gevonden."
   }
 }

@@ -41,12 +41,8 @@ export default async function LibraryPage() {
   const grading = rules.filter((r) => r.classificationEnabled).length;
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <Link href="/coach" className="text-xs text-ink-muted underline">
-        {titles("athletes")}
-      </Link>
-
-      <header className="mt-3 mb-8">
+    <>
+      <header className="mb-8">
         <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
         <p className="mt-1 text-sm text-ink-muted">
           {grading}/{rules.length} {t("classifies")}
@@ -98,6 +94,6 @@ export default async function LibraryPage() {
           </section>
         ))
       )}
-    </main>
+    </>
   );
 }

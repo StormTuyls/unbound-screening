@@ -116,6 +116,11 @@ body {
     display: none !important;
   }
 
+  /* De coachschil eromheen telt ook mee. Sinds app/coach/(app)/layout.tsx de
+     container levert zit het rapport in een <main> met marge en een maximum
+     breedte, en die zouden anders mee naar papier gaan. De navigatiebalk zelf
+     draagt no-print; de wikkel kan dat niet, want hij bevat het rapport. */
+  main:has(.report),
   .report {
     max-width: none;
     padding: 0;

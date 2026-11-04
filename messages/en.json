@@ -54,7 +54,12 @@
   },
   "errors": {
     "generic": "Something went wrong",
-    "fileKept": "The file is kept, nothing was lost"
+    "fileKept": "The file is kept, nothing was lost",
+    "loading": "Loading",
+    "retry": "Try again",
+    "notFound": "This page does not exist",
+    "notFoundNote": "The link is wrong, or the file has been deleted.",
+    "backToAthletes": "Back to the athletes"
   },
   "sharing": {
     "title": "Before you send this to your coach",
@@ -341,6 +346,9 @@
     "usePost": "Use POST to start an intake.",
     "intakeNotFound": "Intake not found.",
     "athleteNotFound": "Athlete not found.",
+    "screeningInvalid": "This screening is incomplete or not valid.",
+    "screeningUnknownMetric": "Unknown metric: {key}. Reload the page, the library may have changed.",
+    "screeningNoMeasurements": "Enter at least one measurement.",
     "nameMismatch": "The name you typed does not match this athlete.",
     "approvedLocked": "This file has been approved and can no longer be changed.",
     "alreadyApproved": "This intake has already been approved.",
@@ -712,5 +720,33 @@
     "invitationSent": "Invitation emailed to {name}.",
     "invitationNotMailed": "Account created for {name}, but the email could not be sent.",
     "linkIfNotArrived": "If it does not arrive, this link gets them in. It is shown only here."
+  },
+  "athletes": {
+    "title": "Athletes",
+    "activeFiles": "{count, plural, one {# active file} other {# active files}}",
+    "thisMonth": "This month",
+    "thisMonthNote": "screenings · last month {n}",
+    "overdue": "Longer than {days} days",
+    "overdueNote": "athletes without a new measurement",
+    "openFlags": "Open flags",
+    "openFlagsNote": "across {count, plural, one {# athlete} other {# athletes}}",
+    "lastScreened": "Last screened",
+    "sortNote": "The longest wait comes first",
+    "searchPlaceholder": "Search by name",
+    "searchLabel": "Search athletes by name",
+    "colAthlete": "Athlete",
+    "colLast": "Last screening",
+    "colFlags": "Flags",
+    "colAction": "Action",
+    "nameUnknown": "Name unknown",
+    "years": "{n} y",
+    "never": "not screened yet",
+    "daysAgo": "{count, plural, one {# day} other {# days}}",
+    "flagsOpen": "{count} open",
+    "noFlags": "none",
+    "report": "Report",
+    "enter": "Enter",
+    "none": "No athletes yet.",
+    "noMatch": "No athletes found."
   }
 }

@@ -43,6 +43,15 @@ export interface SessionContext {
   readonly limbLengthCm?: number | null;
 }
 
+/**
+ * De normalisaties die een eigen metriek opleveren, met hun sleutel zoals die
+ * in medical.derived_results.derived_key terechtkomt.
+ *
+ * Ze converteren niet naar elkaar: per_body_mass deelt door de massa,
+ * per_body_weight door massa x g. Zie de waarschuwing onderaan units.ts.
+ */
+export type NormaliseKey = "per_body_mass" | "per_body_weight";
+
 // ── Verhoudingen ──────────────────────────────────────────────────────────────
 
 /**

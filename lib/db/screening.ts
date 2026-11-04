@@ -3,6 +3,7 @@ import { query, queryOne, transaction } from "@/lib/db/sql";
 import { BANDS, type Band } from "@/lib/screening/bands";
 import { type Population, ageOn, pickRule } from "@/lib/screening/population";
 import type { Direction } from "@/lib/screening/direction";
+import type { NormaliseKey } from "@/lib/screening/derive";
 import type { MetricSpec, ResultRow, Side } from "@/lib/screening/evaluate";
 import type { HistoryPoint } from "@/lib/screening/baseline";
 import type { Unit } from "@/lib/screening/units";
@@ -20,16 +21,25 @@ import type { Unit } from "@/lib/screening/units";
  * stil elke numerieke kolom raken die er ooit bij komt.
  */
 
-/** De invoerwaarden van een asymmetrierij; null voor alles wat er geen heeft. */
-function readSides(
-  value: unknown,
-): { left?: number | null; right?: number | null; previous?: number | null } | null {
+/** De invoerwaarden van een afgeleide rij; null voor alles wat er geen heeft. */
+function readSides(value: unknown): {
+  left?: number | null;
+  right?: number | null;
+  previous?: number | null;
+  source?: number | null;
+  bodyMassKg?: number | null;
+} | null {
   if (!value || typeof value !== "object") return null;
   const raw = value as Record<string, unknown>;
   if ("left" in raw || "right" in raw) {
     return { left: num(raw.left), right: num(raw.right) };
   }
   if ("previous" in raw) return { previous: num(raw.previous) };
+  // Teller en noemer van een normalisatie. Spec §11: zonder de massa erbij is
+  // 8,5 N/kg niet na te rekenen.
+  if ("source" in raw) {
+    return { source: num(raw.source), bodyMassKg: num(raw.bodyMassKg) };
+  }
   return null;
 }
 
@@ -46,6 +56,8 @@ export interface LibraryTest {
   labelNl: string;
   labelEn: string;
   laterality: "bilateral" | "per_side" | "either";
+  /** Klinische screening of performancebatterij. */
+  domain: "clinical" | "performance";
   protocolId: string;
   protocolConfirmed: boolean;
   metricKey: string;
@@ -58,6 +70,11 @@ export interface LibraryTest {
   rule: { id: number; layer: "published" | "internal_target"; bands: Band[];
           coverage: "total" | "gapped"; classificationEnabled: boolean } | null;
   ruleNote: string | null;
+  /**
+   * Gezet als deze metriek gerekend wordt in plaats van gemeten. Het
+   * invoerscherm hoort die over te slaan: niemand typt N/kg met de hand in.
+   */
+  derivedFrom: { metricKey: string; derivedKey: NormaliseKey } | null;
 }
 
 /**
@@ -114,10 +131,11 @@ export async function getLibrary(
 ): Promise<LibraryTest[]> {
   const rows = await query<Record<string, unknown>>(
     `select t.key as test_key, t.block, t.sort_order, t.label_nl, t.label_en,
-            t.laterality,
+            t.laterality, t.domain,
             p.id as protocol_id, p.protocol_confirmed,
             m.key as metric_key, m.label_nl as metric_label_nl,
             m.label_en as metric_label_en, m.unit, m.direction, m.decimals,
+            m.derived_key, m.derived_from_key,
             r.id as rule_id, r.version as rule_version, r.layer, r.bands,
             r.coverage, r.classification_enabled, r.source_note,
             r.sex as rule_sex, r.sport as rule_sport, r.event as rule_event,
@@ -188,6 +206,7 @@ export async function getLibrary(
       labelNl: row.label_nl as string,
       labelEn: row.label_en as string,
       laterality: row.laterality as LibraryTest["laterality"],
+      domain: row.domain as LibraryTest["domain"],
       protocolId: row.protocol_id as string,
       protocolConfirmed: row.protocol_confirmed as boolean,
       metricKey: row.metric_key as string,
@@ -207,6 +226,16 @@ export async function getLibrary(
             }
           : null,
       ruleNote: (row.source_note as string | null) ?? null,
+      // Beide kolommen of geen van beide: metric_definitions_normalised_has_source
+      // dwingt dat af voor de twee normalisaties. De check hier is er voor een
+      // afgeleide soort die later bijkomt en geen bron heeft, zoals asymmetrie.
+      derivedFrom:
+        row.derived_key !== null && row.derived_from_key !== null
+          ? {
+              metricKey: row.derived_from_key as string,
+              derivedKey: row.derived_key as NormaliseKey,
+            }
+          : null,
     };
   });
 }
@@ -222,6 +251,7 @@ export function toSpecs(library: readonly LibraryTest[]): Map<string, MetricSpec
         direction: t.direction,
         perSide: t.laterality === "per_side",
         rule: t.rule,
+        derivedFrom: t.derivedFrom,
       },
     ]),
   );
@@ -373,6 +403,14 @@ export async function getTimelineEvents(
 export interface NewSession {
   athleteId: string;
   occurredOn: string;
+  /**
+   * Idempotentiesleutel van het formulier, of null.
+   *
+   * Dezelfde sleutel twee keer levert dezelfde sessie op in plaats van een
+   * tweede. Null betekent: deze bron stuurt er geen, en dan is er ook geen
+   * bescherming.
+   */
+  clientToken: string | null;
   testerProfileId: string | null;
   /** De naam zoals die bij het meten gold. Gekopieerd, niet gejoind. */
   testerName: string | null;
@@ -398,7 +436,7 @@ export async function createSession(
   results: readonly ResultRow[],
   actor: { id: string | null },
 ): Promise<string> {
-  const sessionId = await transaction(async (run) => {
+  const { id: sessionId, herhaling } = await transaction(async (run) => {
     const session = await run<{ id: string }>(
       // occurred_at volgt de GEMETEN datum en niet now(). Een behandelaar die de
       // screening van vorige maand vandaag invoert, hoort hem in de tijdlijn op
@@ -410,12 +448,29 @@ export async function createSession(
       // formulier geeft alleen een datum, dus dat is wat er staat.
       `insert into medical.screening_sessions
          (athlete_id, occurred_at, occurred_on, tester_profile_id, tester_name,
-          body_mass_kg, notes, created_by, source_system)
-       values ($1, $2::date, $2, $3, $4, $5, $6, $7, 'manual')
+          body_mass_kg, notes, created_by, source_system, client_token)
+       values ($1, $2::date, $2, $3, $4, $5, $6, $7, 'manual', $8)
+       on conflict (client_token) do nothing
        returning id`,
       [input.athleteId, input.occurredOn, input.testerProfileId, input.testerName,
-       input.bodyMassKg, input.notes, actor.id],
+       input.bodyMassKg, input.notes, actor.id, input.clientToken],
     );
+
+    // Niets terug betekent dat deze sleutel er al was: een herhaalde POST. De
+    // bestaande sessie teruggeven en verder niets doen, want de metingen en de
+    // uitkomsten staan er dan ook al. Een null-sleutel botst nooit, dus deze
+    // tak is per definitie een echte herhaling.
+    if (session.length === 0) {
+      const bestaand = await run<{ id: string }>(
+        `select id from medical.screening_sessions where client_token = $1`,
+        [input.clientToken],
+      );
+      if (bestaand.length === 0) {
+        throw new Error("screening_sessions: insert gaf geen rij en geen botsing");
+      }
+      return { id: bestaand[0].id, herhaling: true };
+    }
+
     const id = session[0].id;
 
     // Een test_item per (protocol, zijde). De meting hangt daaraan, niet aan de
@@ -447,11 +502,17 @@ export async function createSession(
       // ruwe waarde en de verandering tegenover de vorige sessie wel: zonder
       // dat zouden links en rechts op dezelfde rij uitkomen, want de unieke
       // index loopt over (sessie, item, metriek, soort).
+      //
+      // Een genormaliseerde rij hoort bij hetzelfde item als de meting waar hij
+      // uit volgt, en zoekt dus op DIE metriek: zijn eigen sleutel komt in de
+      // ingevoerde metingen niet voor. Zonder dat landen links en rechts allebei
+      // op item null en verdringen ze elkaar op de unieke index.
+      const zoekKey = r.sourceMetricKey ?? r.metricKey;
       const itemId =
         r.kind === "asymmetry"
           ? null
           : (itemIds.get(
-              `${input.entries.find((e) => e.metricKey === r.metricKey && e.side === r.side)?.protocolId}|${r.side}`,
+              `${input.entries.find((e) => e.metricKey === zoekKey && e.side === r.side)?.protocolId}|${r.side}`,
             ) ?? null);
 
       await run(
@@ -466,8 +527,12 @@ export async function createSession(
       );
     }
 
-    return id;
+    return { id, herhaling: false };
   });
+
+  // Geen auditregel bij een herhaling: er is niets ingevoegd, en een "insert"
+  // die niet gebeurde is precies wat een auditlog niet mag beweren.
+  if (herhaling) return sessionId;
 
   await logAudit({
     actorId: actor.id,
@@ -498,7 +563,7 @@ export interface SessionView {
     metricLabelEn: string;
     block: string;
     side: Side;
-    kind: "absolute" | "asymmetry" | "delta";
+    kind: "absolute" | "asymmetry" | "delta" | "normalised";
     value: number | null;
     unit: string;
     decimals: number;
@@ -506,11 +571,17 @@ export interface SessionView {
     unavailableReason: string | null;
     bandStatus: string | null;
     bandScore: number | null;
-    /** Bij asymmetrie: links en rechts, zodat §11's "toon teller en noemer" kan. */
+    /**
+     * Wat erin ging, zodat §11's "toon teller en noemer" kan: links en rechts
+     * bij een asymmetrie, de vorige waarde bij een delta, en de newton met de
+     * massa bij een normalisatie.
+     */
     inputs: {
       left?: number | null;
       right?: number | null;
       previous?: number | null;
+      source?: number | null;
+      bodyMassKg?: number | null;
     } | null;
     protocolConfirmed: boolean;
     /** Herkomst van de regel die deze band gaf, of uitlegt waarom er geen is. FR-08. */
@@ -601,7 +672,9 @@ export async function getSession(
           ? "absolute"
           : row.derived_key === "asymmetry"
             ? "asymmetry"
-            : "delta",
+            : row.derived_key === "delta_previous"
+              ? "delta"
+              : "normalised",
       value: num(row.value),
       unit: row.unit as string,
       decimals: Number(row.decimals),
