@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "db:reset": "supabase db reset && tsx scripts/seed-screening.ts",
     "seed:screening": "tsx scripts/seed-screening.ts",
-    "test": "tsx evals/unit/overdue.test.ts && tsx evals/unit/post-json.test.ts && tsx evals/unit/screening-evaluate.test.ts && tsx evals/unit/screening-library.test.ts && tsx evals/unit/screening-baseline.test.ts && tsx evals/unit/screening-bands.test.ts && tsx evals/unit/reference-rules.test.ts && tsx evals/unit/screening-chart.test.ts && tsx evals/unit/screening-derive.test.ts && tsx evals/unit/screening-population.test.ts",
+    "test": "tsx evals/unit/i18n-keys.test.ts && tsx evals/unit/overdue.test.ts && tsx evals/unit/post-json.test.ts && tsx evals/unit/screening-evaluate.test.ts && tsx evals/unit/screening-library.test.ts && tsx evals/unit/screening-baseline.test.ts && tsx evals/unit/screening-bands.test.ts && tsx evals/unit/reference-rules.test.ts && tsx evals/unit/screening-chart.test.ts && tsx evals/unit/screening-derive.test.ts && tsx evals/unit/screening-population.test.ts",
     "test:screening": "tsx evals/screening.test.ts"
   },
   "dependencies": {

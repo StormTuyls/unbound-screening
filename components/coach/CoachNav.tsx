@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LocaleToggle } from "@/components/LocaleToggle";
 
 /**
  * De navigatiebalk van de praktijk.
@@ -61,6 +62,10 @@ export function CoachNav({
               </Link>
             );
           })}
+
+          {/* Hoort hier en niet alleen op het inlogscherm: wie binnen is kon de
+              taal niet meer wisselen. */}
+          <LocaleToggle />
 
           <form action="/auth/signout" method="post">
             <button
