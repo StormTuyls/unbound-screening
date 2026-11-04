@@ -112,15 +112,15 @@ export default async function ScreeningSessionPage({
   }
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
+    <>
       <Link
-        href={`/coach/athletes/${session.athleteId}`}
-        className="text-xs text-ink-muted underline"
+        href={`/coach/athletes/${session.athleteId}/screening`}
+        className="inline-flex min-h-11 items-center text-xs text-ink-muted underline"
       >
         {session.athleteName ?? t("title")}
       </Link>
 
-      <header className="mt-3 mb-8">
+      <header className="mt-1 mb-8">
         <h1 className="text-2xl font-semibold tracking-tight">
           {t("title")} {session.occurredOn}
         </h1>
@@ -299,6 +299,6 @@ export default async function ScreeningSessionPage({
           </dl>
         </details>
       )}
-    </main>
+    </>
   );
 }

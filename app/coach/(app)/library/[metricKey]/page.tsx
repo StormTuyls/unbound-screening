@@ -46,12 +46,12 @@ export default async function RulePage({
   const name = locale === "nl" ? rule.testLabelNl : rule.testLabelEn;
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <Link href="/coach/library" className="text-xs text-ink-muted underline">
+    <>
+      <Link href="/coach/library" className="inline-flex min-h-11 items-center text-xs text-ink-muted underline">
         {t("title")}
       </Link>
 
-      <header className="mt-3 mb-6">
+      <header className="mt-1 mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">{name}</h1>
         <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink-muted">
           <span>{t("version", { n: rule.version })}</span>
@@ -135,6 +135,6 @@ export default async function RulePage({
           </ul>
         </section>
       )}
-    </main>
+    </>
   );
 }

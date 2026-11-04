@@ -71,12 +71,17 @@ export default async function NewScreeningPage({
     }));
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <Link href={`/coach/athletes/${athleteId}`} className="text-xs text-ink-muted underline">
+    <>
+      {/* Wees naar het verloop van deze atleet, niet naar /coach/athletes/<id>:
+          die route bestaat niet en heeft nooit bestaan. */}
+      <Link
+        href={`/coach/athletes/${athleteId}/screening`}
+        className="inline-flex min-h-11 items-center text-xs text-ink-muted underline"
+      >
         {athlete.name ?? t("title")}
       </Link>
 
-      <header className="mt-3 mb-8">
+      <header className="mt-1 mb-8">
         <h1 className="text-2xl font-semibold tracking-tight">{t("new")}</h1>
         <p className="mt-1 text-sm text-ink-muted">{t("intro")}</p>
       </header>
@@ -88,6 +93,6 @@ export default async function NewScreeningPage({
       ) : (
         <ScreeningEntry athleteId={athleteId} tests={tests} />
       )}
-    </main>
+    </>
   );
 }

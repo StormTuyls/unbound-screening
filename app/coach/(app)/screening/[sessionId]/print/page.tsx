@@ -95,7 +95,7 @@ export default async function ScreeningPrintPage({
   return (
     <>
       <AutoPrint />
-      <main className="report mx-auto max-w-3xl px-6 py-10">
+      <div className="report">
         <header className="mb-6">
           <p className="text-xs text-ink-muted">{PRACTICE_NAME}</p>
           <h1 className="mt-1 text-2xl font-semibold tracking-tight">
@@ -180,7 +180,7 @@ export default async function ScreeningPrintPage({
         <p className="mt-4 border-t border-hairline pt-2 text-[10px] text-ink-faint">
           {t("frozenNote")}
         </p>
-      </main>
+      </div>
     </>
   );
 }
