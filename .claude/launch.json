@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "screening",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        ". \"${NVM_DIR:-$HOME/.nvm}/nvm.sh\" >/dev/null 2>&1 && nvm use >/dev/null 2>&1; exec npm run dev -- --port 3100"
+      ],
+      "port": 3100
+    }
+  ]
+}
