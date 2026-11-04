@@ -10,6 +10,10 @@ export const maxDuration = 60;
 
 const bodySchema = z.object({
   athleteId: z.string().uuid(),
+  // Optioneel, zodat een tabblad van voor deze versie blijft werken. Zonder
+  // sleutel is er geen bescherming tegen een dubbele POST; zie de migratie
+  // 20261103090000_screening_client_token.sql.
+  clientToken: z.string().uuid().nullish(),
   occurredOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   bodyMassKg: z.number().positive().nullable(),
   notes: z.string().max(2000).nullable(),
@@ -46,7 +50,7 @@ export async function POST(request: Request) {
     const coach = await requireCoach();
 
     const parsed = bodySchema.safeParse(await request.json().catch(() => null));
-    if (!parsed.success) return badRequest("Expected a screening session.");
+    if (!parsed.success) return badRequest(t("screeningInvalid"));
     const input = parsed.data;
 
     if (!isUuid(input.athleteId)) {
@@ -80,13 +84,13 @@ export async function POST(request: Request) {
     // overslaan: stil minder opslaan dan de tester invulde is de ergste uitkomst.
     const unknown = input.entries.filter((e) => !byMetric.has(e.metricKey));
     if (unknown.length > 0) {
-      return badRequest(`Unknown metric: ${unknown[0].metricKey}`);
+      return badRequest(t("screeningUnknownMetric", { key: unknown[0].metricKey }));
     }
 
     // Alles leeg is geen screening. Anders levert een per ongeluk ingediend
     // formulier een lege sessie op die wel in de tijdlijn staat.
     if (input.entries.every((e) => e.value === null)) {
-      return badRequest("Enter at least one measurement.");
+      return badRequest(t("screeningNoMeasurements"));
     }
 
     // De protocolversie hoort bij de meting: de rekenmotor vergelijkt alleen
@@ -122,6 +126,7 @@ export async function POST(request: Request) {
       {
         athleteId: input.athleteId,
         occurredOn: input.occurredOn,
+        clientToken: input.clientToken ?? null,
         testerProfileId: coach.id,
         testerName: coach.fullName,
         bodyMassKg: input.bodyMassKg,

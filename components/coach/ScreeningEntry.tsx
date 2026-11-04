@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { postJson } from "@/lib/postJson";
 
 /**
  * Invoerscherm voor een screening.
@@ -69,6 +70,10 @@ export function ScreeningEntry({
   const [occurredOn, setOccurredOn] = useState(() => new Date().toISOString().slice(0, 10));
   const [bodyMass, setBodyMass] = useState("");
   const [notes, setNotes] = useState("");
+  // Een sleutel per geopend formulier, en dus niet per poging: een tweede tik
+  // of een herhaling na een trage verbinding draagt dezelfde sleutel en levert
+  // dezelfde sessie op in plaats van een tweede.
+  const [clientToken] = useState(() => crypto.randomUUID());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -108,27 +113,25 @@ export function ScreeningEntry({
         .filter((entry) => entry.value !== null),
     );
 
-    const response = await fetch("/api/coach/screening", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        athleteId,
-        occurredOn,
-        bodyMassKg: toValue(bodyMass),
-        notes: notes.trim() === "" ? null : notes.trim(),
-        entries,
-      }),
+    const result = await postJson("/api/coach/screening", {
+      athleteId,
+      clientToken,
+      occurredOn,
+      bodyMassKg: toValue(bodyMass),
+      notes: notes.trim() === "" ? null : notes.trim(),
+      entries,
     });
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      setError(body?.error ?? t("saveFailed"));
+    if (!result.ok) {
+      setError(result.error ?? t("saveFailed"));
       setSaving(false);
       return;
     }
 
-    const body = await response.json();
-    router.push(`/coach/screening/${body.sessionId}`);
+    // saving blijft hier bewust staan: de navigatie volgt, en een knop die
+    // tussendoor weer aanklikbaar wordt levert een tweede sessie op.
+    const { sessionId } = result.data as { sessionId: string };
+    router.push(`/coach/screening/${sessionId}`);
   }
 
   return (

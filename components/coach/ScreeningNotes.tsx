@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { postJson } from "@/lib/postJson";
 import type { ScreeningNote } from "@/lib/db/screeningNotes";
 
 /**
@@ -44,14 +45,9 @@ export function ScreeningNotes({
   async function post(payload: unknown) {
     setBusy(true);
     setError(null);
-    const response = await fetch(`/api/coach/screening/${sessionId}/notes`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-      const data = await response.json().catch(() => null);
-      setError(data?.error ?? t("saveFailed"));
+    const result = await postJson(`/api/coach/screening/${sessionId}/notes`, payload);
+    if (!result.ok) {
+      setError(result.error ?? t("saveFailed"));
       setBusy(false);
       return false;
     }
@@ -95,6 +91,17 @@ export function ScreeningNotes({
         )}
       </div>
       <p className="mb-2 max-w-prose text-xs text-ink-faint">{t("intro")}</p>
+
+      {/* Buiten het toevoegpaneel, want hij stond erin.
+          Een mislukte sluiting zette de melding wel maar toonde hem nooit: het
+          paneel is dan dicht. Bij een handeling die een vlag sluit is dat de
+          slechtste plek om stil te falen. role="alert" erbij, want een regel
+          die ergens op het scherm verschijnt bereikt een schermlezer niet. */}
+      {error && (
+        <p role="alert" className="mb-2 text-sm text-danger">
+          {error}
+        </p>
+      )}
 
       {notes.length === 0 && !open && (
         <p className="text-sm text-ink-faint">{t("none")}</p>
@@ -195,8 +202,6 @@ export function ScreeningNotes({
               className="w-full rounded border border-hairline bg-surface px-2 py-1.5 text-base"
             />
           </label>
-
-          {error && <p className="text-sm text-danger">{error}</p>}
 
           <div className="flex gap-2">
             <button

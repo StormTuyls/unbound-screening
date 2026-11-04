@@ -89,6 +89,7 @@ try {
     {
       athleteId,
       occurredOn: "2026-07-01",
+      clientToken: null,
       testerProfileId: null,
       testerName: "Lotte Vermeulen",
       bodyMassKg: 61,
@@ -137,6 +138,7 @@ try {
     {
       athleteId,
       occurredOn: "2026-10-09",
+      clientToken: null,
       testerProfileId: null,
       testerName: "Lotte Vermeulen",
       bodyMassKg: 62.4,
@@ -173,12 +175,57 @@ try {
   assert.equal(absoluteLeft?.value, 70);
   assert.equal(absoluteLeft?.bandStatus, "poor");
 
+  // --- twee keer bewaren met dezelfde sleutel -------------------------------
+  //
+  // Dit is de hele reden dat client_token bestaat. Zonder de unieke index en de
+  // on conflict staat er hierna een derde sessie op de tijdlijn, met dezelfde
+  // metingen onder een andere datum, en is er niets aan te zien dat hem van een
+  // echte tweede meting onderscheidt.
+  const token = randomUUID();
+  const derde = [
+    { metricKey: slr.metricKey, side: "left" as const, value: 71, protocolId: slr.protocolId },
+  ];
+  const sessie = (): Parameters<typeof createSession>[0] => ({
+    athleteId,
+    occurredOn: "2026-10-20",
+    clientToken: token,
+    testerProfileId: null,
+    testerName: "Lotte Vermeulen",
+    bodyMassKg: 62.4,
+    notes: null,
+    entries: derde,
+  });
+  const uitkomst = evaluate(
+    derde, specs, await getHistory(athleteId, derde.map((e) => e.metricKey)),
+    "2026-10-20T09:00:00Z",
+  );
+
+  const eerstePoging = await createSession(sessie(), uitkomst, actor);
+  const tweedePoging = await createSession(sessie(), uitkomst, actor);
+  assert.equal(tweedePoging, eerstePoging, "dezelfde sleutel geeft dezelfde sessie terug");
+
+  // En niet alleen hetzelfde id: ook geen tweede set metingen eronder.
+  const naHerhaling = await listSessions(athleteId, actor);
+  assert.equal(naHerhaling.length, 3, "drie sessies, niet vier");
+  assert.equal(
+    naHerhaling.find((x) => x.occurredOn === "2026-10-20")?.measurements,
+    1,
+    "de metingen zijn niet verdubbeld",
+  );
+
+  // Zonder sleutel blijft een tweede sessie op dezelfde dag gewoon toegestaan:
+  // een ochtend- en een avondmeting zijn niet uitwisselbaar.
+  const zonderSleutel = await createSession(
+    { ...sessie(), clientToken: null }, uitkomst, actor,
+  );
+  assert.notEqual(zonderSleutel, eerstePoging, "zonder sleutel is er geen ontdubbeling");
+
   // --- de tijdlijn ---------------------------------------------------------
 
   const sessions = await listSessions(athleteId, actor);
-  assert.equal(sessions.length, 2);
-  assert.equal(sessions[0].occurredOn, "2026-10-09", "nieuwste eerst");
-  assert.equal(sessions[1].measurements, 3);
+  assert.equal(sessions.length, 4);
+  assert.equal(sessions[0].occurredOn, "2026-10-20", "nieuwste eerst");
+  assert.equal(sessions[3].measurements, 3);
 
   // --- wat het scherm nodig heeft ------------------------------------------
   //
@@ -255,7 +302,7 @@ try {
   assert.equal(stillPoor?.ruleVersion, 1);
 
   console.log(
-    `screening: ${library.length} tests, 2 sessies, delta per zijde (links was 78, rechts was 84), ` +
+    `screening: ${library.length} tests, 4 sessies, dezelfde sleutel ontdubbelt, delta per zijde (links was 78, rechts was 84), ` +
       "band aan voor SLR en uit voor Thomas, rapport bevroren tegen een bijgestelde drempel",
   );
 } finally {

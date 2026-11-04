@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { postJson } from "@/lib/postJson";
 
 /**
  * Indelen aan- of uitzetten. Een update op de regel, geen nieuwe versie: de
@@ -29,14 +30,13 @@ export function ClassificationToggle({
   async function toggle() {
     setBusy(true);
     setError(null);
-    const response = await fetch("/api/coach/reference-rules", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ action: "classification", ruleId, enabled: !enabled }),
+    const result = await postJson("/api/coach/reference-rules", {
+      action: "classification",
+      ruleId,
+      enabled: !enabled,
     });
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      setError(body?.error ?? t("saveFailed"));
+    if (!result.ok) {
+      setError(result.error ?? t("saveFailed"));
       setBusy(false);
       return;
     }

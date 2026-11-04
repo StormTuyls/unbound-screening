@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { postJson } from "@/lib/postJson";
 import type { Band } from "@/lib/screening/bands";
 
 /**
@@ -69,24 +70,19 @@ export function RuleEditor({ metricKey, unit, initial }: RuleEditorProps) {
       ...(r.lt.trim() === "" ? {} : { lt: Number(r.lt) }),
     }));
 
-    const response = await fetch("/api/coach/reference-rules", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        action: "version",
-        metricKey,
-        bands,
-        coverage,
-        classificationEnabled: enabled,
-        evidence,
-        sourceCitation: citation.trim() === "" ? null : citation.trim(),
-        sourceNote: note.trim() === "" ? null : note.trim(),
-      }),
+    const result = await postJson("/api/coach/reference-rules", {
+      action: "version",
+      metricKey,
+      bands,
+      coverage,
+      classificationEnabled: enabled,
+      evidence,
+      sourceCitation: citation.trim() === "" ? null : citation.trim(),
+      sourceNote: note.trim() === "" ? null : note.trim(),
     });
 
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      setError(body?.error ?? t("saveFailed"));
+    if (!result.ok) {
+      setError(result.error ?? t("saveFailed"));
       setSaving(false);
       return;
     }

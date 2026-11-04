@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { handleError } from "@/lib/http";
+import { apiMessages } from "@/lib/i18n/server";
 import { logAudit } from "@/lib/audit";
 import { isUuid, requireCoach } from "@/lib/review/access";
 import { ensureFrozenScreening } from "@/lib/report/screeningFreeze";
@@ -58,15 +59,16 @@ export async function GET(
   context: { params: Promise<{ sessionId: string }> },
 ) {
   try {
+    const t = await apiMessages();
     const { sessionId } = await context.params;
-    if (!isUuid(sessionId)) return NextResponse.json({ error: "not found" }, { status: 404 });
+    if (!isUuid(sessionId)) return NextResponse.json({ error: t("notFound") }, { status: 404 });
 
     const coach = await requireCoach();
     const url = new URL(request.url);
     const format = url.searchParams.get("format") === "csv" ? "csv" : "json";
 
     const report = await ensureFrozenScreening(sessionId, { id: coach.id }, coach.id);
-    if (!report) return NextResponse.json({ error: "not found" }, { status: 404 });
+    if (!report) return NextResponse.json({ error: t("notFound") }, { status: 404 });
 
     await logAudit({
       actorId: coach.id,

@@ -403,6 +403,14 @@ export async function getTimelineEvents(
 export interface NewSession {
   athleteId: string;
   occurredOn: string;
+  /**
+   * Idempotentiesleutel van het formulier, of null.
+   *
+   * Dezelfde sleutel twee keer levert dezelfde sessie op in plaats van een
+   * tweede. Null betekent: deze bron stuurt er geen, en dan is er ook geen
+   * bescherming.
+   */
+  clientToken: string | null;
   testerProfileId: string | null;
   /** De naam zoals die bij het meten gold. Gekopieerd, niet gejoind. */
   testerName: string | null;
@@ -428,7 +436,7 @@ export async function createSession(
   results: readonly ResultRow[],
   actor: { id: string | null },
 ): Promise<string> {
-  const sessionId = await transaction(async (run) => {
+  const { id: sessionId, herhaling } = await transaction(async (run) => {
     const session = await run<{ id: string }>(
       // occurred_at volgt de GEMETEN datum en niet now(). Een behandelaar die de
       // screening van vorige maand vandaag invoert, hoort hem in de tijdlijn op
@@ -440,12 +448,29 @@ export async function createSession(
       // formulier geeft alleen een datum, dus dat is wat er staat.
       `insert into medical.screening_sessions
          (athlete_id, occurred_at, occurred_on, tester_profile_id, tester_name,
-          body_mass_kg, notes, created_by, source_system)
-       values ($1, $2::date, $2, $3, $4, $5, $6, $7, 'manual')
+          body_mass_kg, notes, created_by, source_system, client_token)
+       values ($1, $2::date, $2, $3, $4, $5, $6, $7, 'manual', $8)
+       on conflict (client_token) do nothing
        returning id`,
       [input.athleteId, input.occurredOn, input.testerProfileId, input.testerName,
-       input.bodyMassKg, input.notes, actor.id],
+       input.bodyMassKg, input.notes, actor.id, input.clientToken],
     );
+
+    // Niets terug betekent dat deze sleutel er al was: een herhaalde POST. De
+    // bestaande sessie teruggeven en verder niets doen, want de metingen en de
+    // uitkomsten staan er dan ook al. Een null-sleutel botst nooit, dus deze
+    // tak is per definitie een echte herhaling.
+    if (session.length === 0) {
+      const bestaand = await run<{ id: string }>(
+        `select id from medical.screening_sessions where client_token = $1`,
+        [input.clientToken],
+      );
+      if (bestaand.length === 0) {
+        throw new Error("screening_sessions: insert gaf geen rij en geen botsing");
+      }
+      return { id: bestaand[0].id, herhaling: true };
+    }
+
     const id = session[0].id;
 
     // Een test_item per (protocol, zijde). De meting hangt daaraan, niet aan de
@@ -502,8 +527,12 @@ export async function createSession(
       );
     }
 
-    return id;
+    return { id, herhaling: false };
   });
+
+  // Geen auditregel bij een herhaling: er is niets ingevoegd, en een "insert"
+  // die niet gebeurde is precies wat een auditlog niet mag beweren.
+  if (herhaling) return sessionId;
 
   await logAudit({
     actorId: actor.id,
