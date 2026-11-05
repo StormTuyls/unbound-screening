@@ -5,6 +5,11 @@
 //
 //   cp lib/screening/afkapwaarden.voorbeeld.ts lib/screening/afkapwaarden.ts
 //
+// Op Vercel gebeurt dat niet met de hand: scripts/afkapwaarden-schrijven.ts
+// draait voor elke build en schrijft het echte bestand uit de omgevingsvariabele
+// AFKAPWAARDEN_B64. Verandert de bron, dan moet die variabele mee, anders bouwt
+// productie door op de oude getallen.
+//
 // Drie tests, genoeg om elke vorm te laten zien: vier banden per zijde, twee
 // banden, en een test zonder regel waarbij de tester zelf scoort.
 
