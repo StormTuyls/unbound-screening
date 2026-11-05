@@ -21,10 +21,12 @@ import { LocaleToggle } from "@/components/LocaleToggle";
 export function CoachNav({
   practice,
   items,
+  intake,
   signOut,
 }: {
   practice: string;
   items: Array<{ href: string; label: string }>;
+  intake: { href: string; label: string } | null;
   signOut: string;
 }) {
   const pathname = usePathname();
@@ -62,6 +64,19 @@ export function CoachNav({
               </Link>
             );
           })}
+
+          {/* De intake is een andere app op een ander domein. Vandaar een
+              gewone <a>: er valt niets te prefetchen, aria-current slaat
+              nergens op, en de coach logt daar apart in zolang de twee geen
+              gedeeld domein hebben. Zonder adres geen knop. */}
+          {intake && (
+            <a
+              href={intake.href}
+              className="flex min-h-11 items-center rounded-chip px-3.5 text-sm text-ink-muted transition-colors hover:bg-canvas"
+            >
+              {intake.label}
+            </a>
+          )}
 
           {/* Hoort hier en niet alleen op het inlogscherm: wie binnen is kon de
               taal niet meer wisselen. */}

@@ -36,6 +36,11 @@ export default async function CoachLayout({
           { href: "/coach", label: t("athletes") },
           { href: "/coach/library", label: tl("title") },
         ]}
+        intake={
+          process.env.NEXT_PUBLIC_INTAKE_URL
+            ? { href: `${process.env.NEXT_PUBLIC_INTAKE_URL}/coach`, label: t("intake") }
+            : null
+        }
         signOut={tc("signOut")}
       />
       <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>
