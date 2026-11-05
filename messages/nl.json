@@ -499,7 +499,8 @@
     "report": "Intakerapport",
     "profile": "Profiel",
     "password": "Wachtwoord",
-    "consent": "Toestemming"
+    "consent": "Toestemming",
+    "intakeFile": "Intakedossier"
   },
   "consentGate": {
     "title": "Eén ding voordat we beginnen",

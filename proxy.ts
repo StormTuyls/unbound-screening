@@ -52,18 +52,16 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Alleen waar een sessie iets betekent. De atleetintake staat er nu ook bij:
-  // sinds er accounts zijn, hangt ook /intake aan een Supabase-sessie en niet
-  // meer alleen aan het capability-token.
-  matcher: [
-    "/",
-    "/home/:path*",
-    "/start/:path*",
-    "/intake/:path*",
-    "/coach/:path*",
-    "/review/:path*",
-    "/api/intake/:path*",
-    "/api/athlete/:path*",
-    "/api/review/:path*",
-  ],
+  // Alleen waar een sessie iets betekent, en alleen wat deze app heeft. De
+  // lijst kwam bij de splitsing mee uit athlete-intake en bewaakte zeven
+  // routes die hier niet bestaan: /home, /start, /intake, /review en de
+  // bijbehorende api-paden.
+  //
+  // /api/coach stond er niet bij en hoort er wel: zonder verlenging krijgt een
+  // coach wiens token tijdens het invullen verloopt een 401 op het bewaren in
+  // plaats van een vernieuwde sessie.
+  //
+  // /api/health blijft er bewust buiten. Die route kent geen gebruiker en moet
+  // goedkoop blijven, want hij wordt gepold.
+  matcher: ["/", "/coach/:path*", "/api/coach/:path*", "/api/locale"],
 };

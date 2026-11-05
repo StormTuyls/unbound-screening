@@ -499,7 +499,8 @@
     "report": "Intake report",
     "profile": "Profile",
     "password": "Password",
-    "consent": "Consent"
+    "consent": "Consent",
+    "intakeFile": "Intake file"
   },
   "consentGate": {
     "title": "One thing before we start",
