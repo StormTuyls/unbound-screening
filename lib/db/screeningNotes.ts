@@ -105,12 +105,18 @@ export async function addNote(
 }
 
 /**
- * Een vlag sluiten.
+ * Een vlag sluiten of heropenen.
  *
  * De check screening_notes_resolution_complete eist dat state, resolved_at en
- * resolved_by samen kloppen, dus ze gaan in een statement. Heropenen kan niet:
- * een gesloten vlag die weer open kan is geen spoor maar een schakelaar. Wie
- * het oneens is schrijft een nieuwe opmerking.
+ * resolved_by samen kloppen, dus elke overgang gaat in één statement.
+ *
+ * Heropenen kon eerst niet, met het argument dat een vlag die weer open kan een
+ * schakelaar is en geen spoor. Dat argument raakt de verkeerde helft: wat een
+ * spoor kapotmaakt is een sluiting die zonder bericht verdwijnt, niet een
+ * sluiting die zichtbaar wordt teruggedraaid. Beide overgangen schrijven een
+ * auditregel, dus de geschiedenis blijft volledig. Zonder weg terug was de
+ * enige uitweg voor een verkeerde klik een tweede opmerking die de eerste
+ * tegenspreekt, en dat leest slechter in een dossier.
  */
 export async function resolveNote(
   noteId: number,
@@ -130,6 +136,27 @@ export async function resolveNote(
     entityTable: "screening_notes",
     entityId: String(noteId),
     detail: { state: "resolved" },
+  });
+}
+
+export async function reopenNote(
+  noteId: number,
+  actor: { id: string | null; isAdmin: boolean },
+): Promise<void> {
+  await query(
+    `update medical.screening_notes
+        set state = 'open', resolved_at = null, resolved_by = null
+      where id = $1 and state = 'resolved'`,
+    [noteId],
+  );
+  await logAudit({
+    actorId: actor.id,
+    actorKind: actor.isAdmin ? "admin" : "coach",
+    action: "update",
+    entitySchema: "medical",
+    entityTable: "screening_notes",
+    entityId: String(noteId),
+    detail: { state: "open" },
   });
 }
 

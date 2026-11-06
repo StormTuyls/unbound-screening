@@ -11,8 +11,9 @@ import type { ScreeningNote } from "@/lib/db/screeningNotes";
  *
  * Spec §14 is waarom dit geen alarmregel is: "The system should not create an
  * alarm for every red cell." Wat opvolging vraagt bepaalt de behandelaar. Een
- * vlag blijft open tot iemand hem sluit, en sluiten is eenrichtingsverkeer:
- * een gesloten vlag die weer open kan is geen spoor maar een schakelaar.
+ * vlag blijft open tot iemand hem sluit, en een gesloten vlag kan terug open.
+ * Die weg terug staat bij de notitie zelf en niet in een melding die na een
+ * paar tellen verdwijnt: een verkeerde klik merk je soms pas de dag erna.
  */
 
 const SEVERITY_STYLE: Record<string, string> = {
@@ -161,16 +162,19 @@ export function ScreeningNotes({
                   {note.createdAt.slice(0, 10)}
                   {note.authorName ? ` · ${t("by")} ${note.authorName}` : ""}
                 </span>
-                {note.state === "open" && (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => post({ action: "resolve", noteId: note.id })}
-                    className="inline-flex min-h-11 items-center underline disabled:opacity-40"
-                  >
-                    {t("resolve")}
-                  </button>
-                )}
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() =>
+                    post({
+                      action: note.state === "open" ? "resolve" : "reopen",
+                      noteId: note.id,
+                    })
+                  }
+                  className="inline-flex min-h-11 items-center underline disabled:opacity-40"
+                >
+                  {note.state === "open" ? t("resolve") : t("reopen")}
+                </button>
               </div>
             </li>
           ))}

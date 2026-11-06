@@ -4,15 +4,15 @@ import { badRequest, handleError } from "@/lib/http";
 import { apiMessages } from "@/lib/i18n/server";
 import { isUuid, requireCoach } from "@/lib/review/access";
 import { getSession } from "@/lib/db/screening";
-import { addNote, resolveNote } from "@/lib/db/screeningNotes";
+import { addNote, reopenNote, resolveNote } from "@/lib/db/screeningNotes";
 
 export const maxDuration = 60;
 
 /**
  * Opmerkingen en vlaggen op een screening. FR-13.
  *
- * Twee handelingen onder een route: schrijven en sluiten. Heropenen zit er niet
- * bij, met opzet; zie resolveNote().
+ * Drie handelingen onder een route: schrijven, sluiten en heropenen. Dat
+ * laatste kon lang niet; zie resolveNote() voor waarom het er nu wel is.
  */
 
 const add = z.object({
@@ -34,7 +34,12 @@ const resolve = z.object({
   noteId: z.number().int().positive(),
 });
 
-const bodySchema = z.discriminatedUnion("action", [add, resolve]);
+const reopen = z.object({
+  action: z.literal("reopen"),
+  noteId: z.number().int().positive(),
+});
+
+const bodySchema = z.discriminatedUnion("action", [add, resolve, reopen]);
 
 export async function POST(
   request: Request,
@@ -60,6 +65,11 @@ export async function POST(
 
     if (body.action === "resolve") {
       await resolveNote(body.noteId, actor);
+      return NextResponse.json({ ok: true });
+    }
+
+    if (body.action === "reopen") {
+      await reopenNote(body.noteId, actor);
       return NextResponse.json({ ok: true });
     }
 

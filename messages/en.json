@@ -645,6 +645,7 @@
     "action_field": "Agreed action",
     "actionHint": "For example: retest in 6 weeks.",
     "resolve": "Close",
+    "reopen": "Reopen",
     "resolved": "closed",
     "open": "open",
     "openCount": "{count, plural, one {# open flag} other {# open flags}}",

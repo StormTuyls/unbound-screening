@@ -645,6 +645,7 @@
     "action_field": "Afgesproken actie",
     "actionHint": "Bijvoorbeeld: hertesten over 6 weken.",
     "resolve": "Sluiten",
+    "reopen": "Heropenen",
     "resolved": "gesloten",
     "open": "open",
     "openCount": "{count, plural, one {# open vlag} other {# open vlaggen}}",
