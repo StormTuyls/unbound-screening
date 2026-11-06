@@ -76,7 +76,7 @@ export default async function CoachHomePage() {
 
       <div className="mb-8 grid gap-2.5 sm:grid-cols-3">
         {tiles.map((tile) => (
-          <div key={tile.label} className="border border-hairline bg-surface px-3.5 py-3">
+          <div key={tile.label} className="rounded-card border border-hairline bg-surface px-3.5 py-3 shadow-card">
             <p className="text-label text-ink-muted uppercase">{tile.label}</p>
             <p
               className={`mt-1.5 text-2xl font-medium tabular-nums ${

@@ -60,6 +60,7 @@ export async function collectScreening(
     unavailableReason: row.unavailableReason,
     bandStatus: row.bandStatus,
     bandScore: row.bandScore,
+    bands: row.bands,
     // De regel reist mee, opgelost. Dit is waarom dit snapshot bestaat.
     ruleVersion: row.ruleVersion,
     ruleCitation: row.ruleSource,

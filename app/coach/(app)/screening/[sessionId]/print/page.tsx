@@ -2,7 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { checkCoach, isUuid } from "@/lib/review/access";
 import { ensureFrozenScreening, getScreeningReport } from "@/lib/report/screeningFreeze";
-import type { SnapshotNote, SnapshotResult } from "@/lib/report/screeningSnapshot";
+import type { SnapshotBand, SnapshotNote, SnapshotResult } from "@/lib/report/screeningSnapshot";
+import { BandStrip, type StripMarker } from "@/components/report/BandStrip";
 import { AutoPrint } from "@/components/review/AutoPrint";
 import { PRACTICE_NAME } from "@/lib/report/branding";
 import { logAudit } from "@/lib/audit";
@@ -21,6 +22,40 @@ const UNIT_SUFFIX: Record<string, string> = {
   deg: "°", cm: " cm", n: " N", xbw: "×BW", score: "", percent: "%",
   hand_lengths: "", mm: " mm", s: " s", kg: " kg",
 };
+
+/**
+ * De drempels van een regel als tekst.
+ *
+ * Hier staan de getallen die bewust NIET in de strip staan. De strip toont de
+ * plaats, de leeswijzer de schaal, en samen zijn ze na te rekenen. Halfopen
+ * intervallen, zoals het schema ze overal hanteert: de ondergrens telt mee en
+ * de bovengrens niet.
+ */
+function bandRanges(bands: SnapshotBand[]): string {
+  return bands
+    .map((b) => {
+      const name = b.status.replace(/_/g, " ");
+      if (b.gte !== undefined && b.lt !== undefined) return `${name} ${b.gte}\u2013${b.lt}`;
+      if (b.gte !== undefined) return `${name} \u2265 ${b.gte}`;
+      return `${name} < ${b.lt}`;
+    })
+    .join(" \u00b7 ");
+}
+
+/**
+ * De kleur van een kerncijfer op de kaft.
+ *
+ * Nooit het enige signaal: het bandwoord staat er altijd onder, en op een
+ * afdruk zonder achtergrondkleuren blijft dat woord staan. Alleen de onderste
+ * band krijgt inkt; de rest is gewoon zwart, anders kleurt de halve kaft.
+ *
+ * Alleen score 0, en niet ook 1, om dezelfde reden als bandStyle() op het
+ * sessiescherm: score 1 is op een regel met twee banden de beste uitkomst en
+ * op een regel met vier de op een na slechtste.
+ */
+function figureInk(score: number | null): string {
+  return score !== null && score <= 0 ? "text-danger" : "";
+}
 
 /**
  * De voet van een onderdeel.
@@ -109,24 +144,110 @@ export default async function ScreeningPrintPage({
     (a, b) => (BLOCK_ORDER.indexOf(a[0]) + 1 || 99) - (BLOCK_ORDER.indexOf(b[0]) + 1 || 99),
   );
 
-  const rules = new Map<string, { label: string; version: number | null; citation: string | null; note: string | null }>();
+  const rules = new Map<string, { label: string; version: number | null; citation: string | null; note: string | null; bands: SnapshotBand[] | null }>();
   for (const row of s.results) {
     if (row.ruleCitation || row.ruleNote) {
+      const seen = rules.get(name(row));
       rules.set(name(row), {
         label: name(row),
         version: row.ruleVersion,
         citation: row.ruleCitation,
         note: row.ruleNote,
+        // De banden hangen aan de absolute rij; een asymmetrierij heeft er
+        // geen. Eerst gevonden wint, zodat een latere lege rij ze niet wist.
+        bands: seen?.bands ?? row.bands ?? null,
       });
     }
   }
 
+  const sideWord = (side: string) =>
+    side === "left" ? t("left") : side === "right" ? t("right") : "";
+
+  /** De eerste letter van de zijde, voor de baan in de strip. */
+  const sideMark = (side: string) =>
+    side === "left" || side === "right" ? sideWord(side).slice(0, 1).toUpperCase() : "";
+
+  interface Grouped {
+    metricKey: string;
+    name: string;
+    sides: SnapshotResult[];
+    asymmetry: SnapshotResult | null;
+    previous: Map<string, number>;
+    bands: SnapshotBand[] | null;
+    markers: StripMarker[];
+  }
+
+  const SIDE_ORDER = ["left", "right", "bilateral"];
+
+  /**
+   * Eén regel per metriek in plaats van een rij per uitkomst.
+   *
+   * Links, rechts, de asymmetrie en twee keer "t.o.v. vorige" waren vijf losse
+   * rijen over dezelfde test. Dat leest als een opsomming en niet als een
+   * bevinding. Hier worden ze één blok: de zijden onder elkaar, het verschil
+   * eronder, en de vorige waarde als annotatie waar hij hoort.
+   */
+  function groupByMetric(rows: SnapshotResult[]): Grouped[] {
+    const groups = new Map<string, Grouped>();
+    for (const row of rows) {
+      const g = groups.get(row.metricKey) ?? {
+        metricKey: row.metricKey,
+        name: name(row),
+        sides: [],
+        asymmetry: null,
+        previous: new Map<string, number>(),
+        bands: null,
+        markers: [],
+      };
+      if (row.kind === "asymmetry") {
+        g.asymmetry = row;
+      } else if (row.kind === "delta") {
+        if (typeof row.inputs?.previous === "number") {
+          g.previous.set(row.side, row.inputs.previous);
+        }
+      } else {
+        g.sides.push(row);
+        g.bands = g.bands ?? row.bands ?? null;
+      }
+      groups.set(row.metricKey, g);
+    }
+    for (const g of groups.values()) {
+      g.sides.sort((a, b) => SIDE_ORDER.indexOf(a.side) - SIDE_ORDER.indexOf(b.side));
+      g.markers = g.sides
+        .filter((r) => r.status === "computed" && r.value !== null)
+        .map((r) => ({
+          value: r.value as number,
+          label: sideMark(r.side),
+          previous: g.previous.get(r.side) ?? null,
+        }));
+    }
+    return [...groups.values()];
+  }
+
+  const prevOf = (g: Grouped, side: string) => g.previous.get(side) ?? null;
+
+  /** Welke kant lager ligt, uit de teller en de noemer van de asymmetrie. */
+  const asymDirection = (row: SnapshotResult) => {
+    const l = row.inputs?.left;
+    const r = row.inputs?.right;
+    if (typeof l !== "number" || typeof r !== "number" || l === r) return null;
+    return l < r ? ("lowerLeft" as const) : ("lowerRight" as const);
+  };
+
   // De kaftcijfers staan in de data, niet hier: cover_rank op de metriek. Zie
   // de migratie 20261106090100. Alleen gemeten waarden, want een kaft met
   // "niet gemeten" vat niets samen.
-  const cover = s.results
-    .filter((r) => r.coverRank != null && r.kind === "absolute" && r.status === "computed")
-    .sort((a, b) => (a.coverRank! - b.coverRank!) || a.side.localeCompare(b.side));
+  // Eén kaart per test en niet per zijde. Links en rechts van dezelfde test
+  // horen op dezelfde schaal naast elkaar: twee losse kaarten dwingen de lezer
+  // om twee getallen te onthouden en zelf te vergelijken, en dat is precies de
+  // vergelijking waar een screening om draait.
+  const cover = groupByMetric(
+    s.results.filter(
+      (r) => r.coverRank != null && (r.kind === "absolute" || r.kind === "delta"),
+    ),
+  )
+    .filter((g) => g.sides.some((r) => r.status === "computed"))
+    .sort((a, b) => (a.sides[0].coverRank ?? 99) - (b.sides[0].coverRank ?? 99));
 
   // Een snapshot van versie 2 of ouder heeft deze niet. Dan blijft de kaft
   // leeg op dat punt, en dat is juist: die oordelen bestonden toen niet.
@@ -172,37 +293,63 @@ export default async function ScreeningPrintPage({
             </p>
           </header>
 
+          {/* Kaarten en geen tabelregels. Een kaft hoort in één oogopslag te
+              lezen, en dat doet een rij van vijf cijfers wel en een tabel van
+              vijf regels niet. Drie kolommen, want dat klopt zowel op A4 (794px
+              breed) als op een telefoon. */}
           {cover.length > 0 && (
             <section className="mb-6 break-inside-avoid">
-              <h2 className="mb-1 text-sm font-medium">{t("coverFigures")}</h2>
-              <table className="w-full text-sm">
-                <tbody>
-                  {cover.map((row, i) => (
-                    <tr key={`${row.metricKey}-${row.side}-${i}`} className="border-t border-hairline">
-                      <td className="py-1">
-                        {name(row)}
-                        <span className="ml-1.5 text-xs text-ink-faint">
-                          {row.side === "left" ? t("left") : row.side === "right" ? t("right") : ""}
-                        </span>
-                      </td>
-                      <td className="py-1 text-right text-base tabular-nums">
-                        {row.value!.toFixed(row.decimals)}
-                        {UNIT_SUFFIX[row.unit] ?? ` ${row.unit}`}
-                      </td>
-                      <td className="w-24 py-1 pl-3 text-right text-xs text-ink-muted">
-                        {row.bandStatus?.replace(/_/g, " ") ?? ""}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <h2 className="mb-2 text-label text-ink-muted uppercase">{t("coverFigures")}</h2>
+              <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+                {cover.map((g) => (
+                  <div
+                    key={g.metricKey}
+                    className="break-inside-avoid rounded-card border border-hairline bg-surface px-3.5 py-3"
+                  >
+                    <p className="text-label text-ink-muted uppercase">{g.name}</p>
+                    <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3">
+                      {g.sides
+                        .filter((r) => r.status === "computed" && r.value !== null)
+                        .map((r) => (
+                          <p
+                            key={r.side}
+                            className={`text-xl font-semibold tracking-tight tabular-nums ${figureInk(r.bandScore)}`}
+                          >
+                            {sideMark(r.side) && (
+                              <span className="mr-1 text-xs font-normal text-ink-muted">
+                                {sideMark(r.side)}
+                              </span>
+                            )}
+                            {r.value!.toFixed(r.decimals)}
+                            {UNIT_SUFFIX[r.unit] ?? ` ${r.unit}`}
+                          </p>
+                        ))}
+                    </div>
+                    {g.bands && (
+                      <BandStrip bands={g.bands} markers={g.markers} className="mt-2 h-5 w-full" />
+                    )}
+                    <p className="mt-1.5 text-xs text-ink-muted">
+                      {g.sides
+                        .map((r) => r.bandStatus?.replace(/_/g, " "))
+                        .filter(Boolean)
+                        .join(" · ") || t("noBand")}
+                    </p>
+                  </div>
+                ))}
+              </div>
             </section>
           )}
 
+          {/* Het besluit is het enige op de kaft dat de behandelaar zelf
+              schreef, en het draagt de hele afdruk. Een getint vlak zet het
+              apart van de cijfers eromheen. Print zonder achtergronden laat de
+              rand en het label staan, dus het blijft leesbaar als een blok. */}
           {s.notes && (
-            <section className="mb-6 break-inside-avoid">
-              <h2 className="mb-1 text-sm font-medium">{t("decision")}</h2>
-              <p className="text-sm">{s.notes}</p>
+            <section className="mb-6 flex gap-3.5 break-inside-avoid rounded-card border border-brand-100 bg-brand-50 px-4 py-3.5">
+              <h2 className="shrink-0 pt-0.5 text-label text-brand-700 uppercase">
+                {t("decision")}
+              </h2>
+              <p className="text-sm leading-relaxed">{s.notes}</p>
             </section>
           )}
 
@@ -212,7 +359,11 @@ export default async function ScreeningPrintPage({
           ].map(({ key, heading, rows }) =>
             rows.length === 0 ? null : (
               <section key={key} className="mb-6 break-inside-avoid">
-                <h2 className="mb-1 text-sm font-medium">{heading}</h2>
+                <h2
+                  className={`mb-1 text-label uppercase ${key === "strength" ? "text-brand-700" : "text-warn"}`}
+                >
+                  {heading}
+                </h2>
                 <ol className="text-sm">
                   {rows.map((note, i) => (
                     <li key={note.id} className="flex gap-3 border-t border-hairline py-1.5">
@@ -245,42 +396,56 @@ export default async function ScreeningPrintPage({
             <h2 className="mb-1 text-sm font-medium">
               {t(`blocks.${block}` as "blocks.core")}
             </h2>
-            <table className="w-full text-sm">
-              <tbody>
-                {rows.map((row, i) => (
-                  <tr key={`${row.metricKey}-${row.kind}-${row.side}-${i}`} className="border-t border-hairline">
-                    <td className="py-1">
-                      {name(row)}
-                      <span className="ml-1.5 text-xs text-ink-faint">
-                        {(() => {
-                          const side =
-                            row.side === "left"
-                              ? t("left")
-                              : row.side === "right"
-                                ? t("right")
-                                : "";
-                          if (row.kind === "asymmetry") return t("asymmetry");
-                          // Ook bij een delta de zijde erbij: anders staan er
-                          // twee regels "t.o.v. vorige" die niet te scheiden zijn.
-                          if (row.kind === "delta") {
-                            return side ? `${t("vsPrevious")}, ${side}` : t("vsPrevious");
-                          }
-                          return side;
-                        })()}
-                      </span>
-                    </td>
-                    <td className="py-1 text-right tabular-nums">
-                      {row.status === "computed" && row.value !== null
-                        ? `${row.value.toFixed(row.kind === "absolute" ? row.decimals : 1)}${UNIT_SUFFIX[row.unit] ?? ` ${row.unit}`}`
-                        : t(`unavailable.${row.unavailableReason ?? "missing_input"}` as "unavailable.missing_input")}
-                    </td>
-                    <td className="w-24 py-1 pl-3 text-right text-xs text-ink-muted">
-                      {row.bandStatus?.replace(/_/g, " ") ?? ""}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            <ul>
+              {groupByMetric(rows).map((g) => (
+                <li
+                  key={g.metricKey}
+                  className="flex items-start gap-4 border-t border-hairline py-2 break-inside-avoid"
+                >
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm">{g.name}</p>
+                    {g.sides.map((row) => (
+                      <p
+                        key={`${row.side}`}
+                        className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-xs"
+                      >
+                        {sideWord(row.side) && (
+                          <span className="w-10 shrink-0 text-ink-muted">{sideWord(row.side)}</span>
+                        )}
+                        <span className="tabular-nums">
+                          {row.status === "computed" && row.value !== null
+                            ? `${row.value.toFixed(row.decimals)}${UNIT_SUFFIX[row.unit] ?? ` ${row.unit}`}`
+                            : t(`unavailable.${row.unavailableReason ?? "missing_input"}` as "unavailable.missing_input")}
+                        </span>
+                        {row.bandStatus && (
+                          <span className="text-ink-muted">{row.bandStatus.replace(/_/g, " ")}</span>
+                        )}
+                        {typeof prevOf(g, row.side) === "number" && (
+                          <span className="text-ink-muted tabular-nums">
+                            {t("was", { value: prevOf(g, row.side)!.toFixed(row.decimals) })}
+                          </span>
+                        )}
+                      </p>
+                    ))}
+                    {g.asymmetry?.status === "computed" && g.asymmetry.value !== null && (
+                      <p className="mt-0.5 text-xs text-ink-muted tabular-nums">
+                        {t("asymmetry")} {g.asymmetry.value.toFixed(1)}%
+                        {asymDirection(g.asymmetry) && ` \u00b7 ${t(asymDirection(g.asymmetry)!)}`}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Vaste breedte, ook als er geen strip is: anders springt
+                      de tekstkolom per test van breedte en leest de lijst als
+                      een trap. */}
+                  <div className="w-[190px] shrink-0">
+                    {g.bands && (
+                      <BandStrip bands={g.bands} markers={g.markers} className="h-6 w-full" />
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
 
             {/* De losse vlaggen bij dit blok, zodat een opmerking naast zijn
                 meting staat en niet drie bladen verderop. Sterktes en
@@ -299,6 +464,13 @@ export default async function ScreeningPrintPage({
         <section className="report-page">
           <h2 className="mb-1 text-sm font-medium">{t("legend")}</h2>
 
+          {/* De sleutel bij de strips. Een figuur zonder legende in een
+              medisch rapport dwingt de lezer te raden wat een open stip
+              betekent, en dat is precies wat een leeswijzer moet voorkomen. */}
+          {s.results.some((r) => r.bands) && (
+            <p className="mb-4 max-w-prose text-xs text-ink-muted">{t("figureKey")}</p>
+          )}
+
           {s.unclassified > 0 && (
             <p className="mb-4 text-xs text-ink-faint">
               {t("unclassified", { count: s.unclassified })}
@@ -314,6 +486,14 @@ export default async function ScreeningPrintPage({
                     <span className="text-ink-muted">{rule.label}</span>
                     {rule.version !== null && ` · ${t("ruleVersion", { n: rule.version })}`}
                     {rule.citation && ` · ${rule.citation}`}
+                    {/* De getallen achter de strips. Zonder deze regel toont
+                        het rapport wel waar een waarde staat, maar niet
+                        waartussen. */}
+                    {rule.bands && (
+                      <span className="block text-ink-muted tabular-nums">
+                        {bandRanges(rule.bands)}
+                      </span>
+                    )}
                     {rule.note && <span className="block">{rule.note}</span>}
                   </li>
                 ))}

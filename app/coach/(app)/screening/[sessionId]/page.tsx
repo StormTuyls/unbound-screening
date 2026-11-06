@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { checkCoach, isUuid } from "@/lib/review/access";
-import { getSession } from "@/lib/db/screening";
+import { getSession, type ResultBand } from "@/lib/db/screening";
 import { listNotes } from "@/lib/db/screeningNotes";
 import { ScreeningNotes } from "@/components/coach/ScreeningNotes";
 
@@ -26,12 +26,28 @@ export const dynamic = "force-dynamic";
  * juist die noot het antwoord op "waarom staat hier geen band".
  */
 
-/** De band als kleur, met het getal er altijd naast. */
-function bandStyle(score: number | null): string {
+/**
+ * De band als kleur, met het woord er altijd naast.
+ *
+ * Naar de plek op de schaal van DEZE regel, niet naar de score zelf. Een score
+ * van 1 is bij anthropometry.navicular_drop (twee banden: attention 0, normal
+ * 1) de beste uitkomst en bij een krachtregel (vier banden, poor tot
+ * excellent) de op een na slechtste. Door te delen door de hoogste score in
+ * dezelfde bandenlijst klopt het voor allebei.
+ *
+ * Eerder stond hier dat dit niet kon zonder de banden mee te nemen, en dat
+ * klopte: ze zaten niet in derived_results. Sinds snapshotversie 4 reizen ze
+ * mee, en dat is ook wat de strips in het rapport tekenen.
+ */
+function bandStyle(score: number | null, bands: ResultBand[] | null): string {
   if (score === null) return "bg-canvas text-ink-muted";
-  if (score <= 0) return "bg-danger-soft text-danger";
-  if (score === 1) return "bg-warn-soft text-warn";
-  return "bg-ok/10 text-ok";
+  const max = Math.max(0, ...(bands ?? []).map((b) => b.score ?? 0));
+  // Zonder banden valt er niets te normaliseren; dan draagt het woord alleen.
+  if (max <= 0) return "bg-canvas text-ink-muted";
+  const ratio = score / max;
+  if (ratio <= 0) return "bg-danger-soft text-danger";
+  if (ratio >= 0.66) return "bg-ok-soft text-ok-strong";
+  return "bg-warn-soft text-warn";
 }
 
 const UNIT_SUFFIX: Record<string, string> = {
@@ -64,8 +80,22 @@ export default async function ScreeningSessionPage({
   const name = (row: { testLabelNl: string; testLabelEn: string }) =>
     locale === "nl" ? row.testLabelNl : row.testLabelEn;
 
+  /**
+   * De vorige waarde hoort bij de meting, niet op een regel eronder.
+   *
+   * Een delta is geen aparte uitslag maar een annotatie: "9,5 cm, was 8,0". Als
+   * eigen rij verdubbelt hij de lijst zonder iets toe te voegen, en in de
+   * lokale databank is dat 247 van de 679 rijen. Daarom hier uit de lijst
+   * gelicht en verderop achter de absolute waarde gezet, op metriek en zijde.
+   */
+  const deltas = new Map<string, (typeof session.results)[number]>();
+  for (const row of session.results) {
+    if (row.kind === "delta") deltas.set(`${row.metricKey}|${row.side}`, row);
+  }
+
   const blocks = new Map<string, typeof session.results>();
   for (const row of session.results) {
+    if (row.kind === "delta") continue;
     const list = blocks.get(row.block) ?? [];
     list.push(row);
     blocks.set(row.block, list);
@@ -156,10 +186,12 @@ export default async function ScreeningSessionPage({
 
       {ordered.map(([block, rows]) => (
         <section key={block} className="mb-8">
-          <h2 className="mb-1 text-sm font-medium">
+          <h2 className="border-b border-hairline pb-2 text-sm font-semibold">
             {t(`blocks.${block}` as "blocks.core")}
           </h2>
-          <ul className="divide-y divide-hairline border-t border-hairline">
+          {/* divide-rule en niet divide-hairline: de regels binnen een blok
+              horen lichter te zijn dan de lijn die de blokken scheidt. */}
+          <ul className="divide-y divide-rule">
             {rows.map((row, index) => (
               <li
                 key={`${row.metricKey}-${row.kind}-${row.side}-${index}`}
@@ -209,13 +241,23 @@ export default async function ScreeningSessionPage({
                     </span>
                   )}
 
-                  {row.kind === "delta" && (
-                    <span className="text-xs whitespace-nowrap text-ink-faint tabular-nums">
-                      {typeof row.inputs?.previous === "number"
-                        ? t("was", { value: row.inputs.previous })
-                        : t("protocolChanged")}
-                    </span>
-                  )}
+                  {(() => {
+                    const d = deltas.get(`${row.metricKey}|${row.side}`);
+                    if (!d || row.kind !== "absolute") return null;
+                    return (
+                      // Alleen de vorige waarde, niet ook het verschil in
+                      // procenten. Dat percentage is af te lezen uit deze twee
+                      // getallen, en "0,0 cm  was 0  0,0%" leest als drie
+                      // losse cijfers waarvan er twee niets toevoegen. Zelfde
+                      // aantal decimalen als de meting zelf, anders staat er
+                      // "was 0" naast "0,0".
+                      <span className="text-xs whitespace-nowrap text-ink-faint tabular-nums">
+                        {typeof d.inputs?.previous === "number"
+                          ? t("was", { value: d.inputs.previous.toFixed(row.decimals) })
+                          : t("protocolChanged")}
+                      </span>
+                    );
+                  })()}
 
                   {/* Dezelfde reden als hierboven: zonder de massa erbij is
                       8,5 N/kg niet na te rekenen, en hij verschuift stil mee
@@ -226,12 +268,24 @@ export default async function ScreeningSessionPage({
                     </span>
                   )}
 
-                  {row.bandStatus && (
+                  {/* Een lege plek waar een band hoort leest als "nog niet
+                      ingevuld". Een grijze pil zegt wat er aan de hand is: deze
+                      meting is vastgelegd maar niet beoordeeld. Alleen op rijen
+                      die een band KUNNEN dragen; asymmetrie en delta hebben er
+                      per ontwerp geen. */}
+                  {row.bandStatus ? (
                     <span
-                      className={`rounded px-1.5 py-0.5 text-[10px] whitespace-nowrap ${bandStyle(row.bandScore)}`}
+                      className={`rounded px-1.5 py-0.5 text-[10px] whitespace-nowrap ${bandStyle(row.bandScore, row.bands)}`}
                     >
                       {row.bandStatus.replace(/_/g, " ")}
                     </span>
+                  ) : (
+                    (row.kind === "absolute" || row.kind === "normalised") &&
+                    row.status === "computed" && (
+                      <span className="rounded bg-canvas px-1.5 py-0.5 text-[10px] whitespace-nowrap text-ink-muted">
+                        {t("noBand")}
+                      </span>
+                    )
                   )}
                 </span>
               </li>

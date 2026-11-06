@@ -539,6 +539,8 @@
     "vsPrevious": "t.o.v. vorige",
     "was": "was {value}",
     "protocolChanged": "protocol gewijzigd",
+    "figureKey": "In de strips staan de banden van de referentieregel op schaal. De volle stip is deze meting, de open stip de vorige, en links en rechts hebben elk een eigen baan. De getallen achter de banden staan hieronder per regel.",
+    "noBand": "geen band",
     "unclassified": "{count, plural, one {# meting heeft} other {# metingen hebben}} geen band. Bij die tests staat het protocol of de scoringsconventie nog niet vast, dus de waarde wordt vastgelegd en getrend maar niet beoordeeld.",
     "provenance": "Gebruikte referentieregels",
     "provenanceIntro": "Waar de banden hierboven vandaan komen. Een drempel zonder bron hoort niet in een medisch dossier.",

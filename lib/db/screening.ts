@@ -571,6 +571,7 @@ export interface SessionView {
     unavailableReason: string | null;
     bandStatus: string | null;
     bandScore: number | null;
+    bands: ResultBand[] | null;
     /**
      * Wat erin ging, zodat §11's "toon teller en noemer" kan: links en rechts
      * bij een asymmetrie, de vorige waarde bij een delta, en de newton met de
@@ -595,6 +596,41 @@ export interface SessionView {
     ruleEvidence: string | null;
     ruleVersion: number | null;
   }>;
+}
+
+/** Een band zoals de regel hem draagt. Spiegelt BAND in lib/screening/bands.ts. */
+export interface ResultBand {
+  status: string;
+  score: number | null;
+  gte?: number;
+  lt?: number;
+}
+
+/**
+ * De banden uit jsonb, of null.
+ *
+ * Defensief en niet met een cast: dit is de enige plek waar de vorm uit de
+ * databank het type binnenkomt, en een regel met een kapotte bandenlijst mag
+ * een sessie niet laten ontploffen. Een band zonder enige grens valt af, want
+ * die kan niet getekend worden.
+ */
+function readBands(raw: unknown): ResultBand[] | null {
+  if (!Array.isArray(raw)) return null;
+  const bands = raw.flatMap((b) => {
+    if (typeof b !== "object" || b === null) return [];
+    const o = b as Record<string, unknown>;
+    if (typeof o.status !== "string") return [];
+    const gte = typeof o.gte === "number" ? o.gte : undefined;
+    const lt = typeof o.lt === "number" ? o.lt : undefined;
+    if (gte === undefined && lt === undefined) return [];
+    return [{
+      status: o.status,
+      score: typeof o.score === "number" ? o.score : null,
+      ...(gte === undefined ? {} : { gte }),
+      ...(lt === undefined ? {} : { lt }),
+    }];
+  });
+  return bands.length > 0 ? bands : null;
 }
 
 export async function getSession(
@@ -629,7 +665,13 @@ export async function getSession(
             t.label_nl as test_label_nl, t.label_en as test_label_en,
             t.block, t.sort_order,
             p.protocol_confirmed, r.source_note, r.source_citation, r.evidence,
-            r.version as rule_version
+            r.version as rule_version,
+            -- De banden zelf, zodat een rapport kan tekenen WAAR een waarde
+            -- staat en niet alleen welk woord erbij hoort. Alleen als de regel
+            -- ook echt indeelt: een uitgezette regel heeft wel banden maar ze
+            -- zijn niet toegepast, en een schaal tekenen die niemand gebruikte
+            -- is een verzinsel.
+            case when r.classification_enabled then r.bands end as bands
        from medical.derived_results d
        left join medical.test_items ti on ti.id = d.test_item_id
        join public.metric_definitions m on m.key = d.metric_key
@@ -695,6 +737,7 @@ export async function getSession(
       ruleSource: (row.source_citation as string | null) ?? null,
       ruleEvidence: (row.evidence as string | null) ?? null,
       ruleVersion: row.rule_version === null ? null : Number(row.rule_version),
+      bands: readBands(row.bands),
     })),
   };
 }

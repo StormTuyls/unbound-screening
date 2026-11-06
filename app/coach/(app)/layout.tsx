@@ -43,7 +43,13 @@ export default async function CoachLayout({
         }
         signOut={tc("signOut")}
       />
-      <main className="mx-auto max-w-5xl px-6 py-8">{children}</main>
+      {/* De inhoud ligt als een witte kaart op het canvas van body. Op de
+          <main> zelf en niet in een div eronder: het printblok reset deze
+          wikkel al via main:has(.report), en een tweede laag zou daar
+          opnieuw uitgezet moeten worden. */}
+      <main className="mx-auto my-6 max-w-5xl rounded-card border border-hairline bg-surface px-5 py-7 shadow-card sm:my-8 sm:px-8">
+        {children}
+      </main>
     </>
   );
 }

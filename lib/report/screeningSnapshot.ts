@@ -29,6 +29,14 @@ import { createHash } from "node:crypto";
  * dus een renderer die alleen versie 1 kent hoort te weigeren in plaats van de
  * rij als een delta te tonen.
  *
+ * Versie 4 voegt bands toe: de drempels zelf, niet alleen het woord dat eruit
+ * kwam. Daarmee kan het rapport TEKENEN waar een waarde op de schaal van zijn
+ * regel staat, en dat is precies wat een afkapwaarde betekent. Ze horen in het
+ * snapshot en niet in een query, om dezelfde reden als de rest: de praktijk
+ * kan een drempel bijstellen, en een afdruk van toen moet de schaal van toen
+ * tonen. Een snapshot van versie 3 of ouder heeft ze niet en krijgt dus geen
+ * strip; het getal en het bandwoord staan er nog gewoon.
+ *
  * Versie 3 voegt coverRank en notes toe. Die laatste staan hier en niet in een
  * query omdat het rapport uitsluitend uit een bevroren versie rendert: zonder
  * de opmerkingen in het snapshot zou pagina 1 ofwel leeg zijn, ofwel de stand
@@ -36,7 +44,14 @@ import { createHash } from "node:crypto";
  * geen notes en krijgt dus geen sterktes en ontwikkelpunten; dat is juist,
  * want die waren er toen niet.
  */
-export const SCREENING_SNAPSHOT_VERSION = 3;
+export const SCREENING_SNAPSHOT_VERSION = 4;
+
+export interface SnapshotBand {
+  status: string;
+  score: number | null;
+  gte?: number;
+  lt?: number;
+}
 
 export interface SnapshotResult {
   metricKey: string;
@@ -52,6 +67,11 @@ export interface SnapshotResult {
   unavailableReason: string | null;
   bandStatus: string | null;
   bandScore: number | null;
+  /**
+   * De banden van de regel die deze waarde indeelde, of null als de regel niet
+   * indeelt. Sinds schemaVersion 4; daarvoor ontbreekt hij.
+   */
+  bands?: SnapshotBand[] | null;
   /** Welke regel deze band gaf, opgelost. Leeg als er niet ingedeeld is. */
   ruleVersion: number | null;
   ruleCitation: string | null;
@@ -130,7 +150,7 @@ export function contentHashOf(snapshot: Omit<ScreeningSnapshot, "contentHash" | 
     results: snapshot.results.map((r) => [
       r.metricKey, r.side, r.kind, r.value, r.unit, r.status,
       r.unavailableReason, r.bandStatus, r.bandScore, r.ruleVersion,
-      r.coverRank ?? null,
+      r.coverRank ?? null, r.bands ?? null,
     ]),
     // De opmerkingen tellen mee: een werkdoel bijstellen of een vlag sluiten
     // verandert wat er op pagina 1 staat, en dus hoort er een nieuwe versie te

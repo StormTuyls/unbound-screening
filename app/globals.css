@@ -35,6 +35,11 @@
   --color-backdrop: #e7e9ed;
   --color-surface: #ffffff;
   --color-hairline: #e8eaee;
+  /* Een tint lichter dan hairline, voor de regels BINNEN een lijst. Zo blijft
+     de rand van een kaart zwaarder dan de scheiding tussen twee rijen erin en
+     valt een blok van dertig metingen in groepen uiteen in plaats van in een
+     grijs raster. */
+  --color-rule: #f0f1f4;
 
   --color-ink: #101828;
   --color-ink-muted: #667085;
@@ -50,6 +55,12 @@
 
   /* Statuskleuren. Amber betekent 'kijk hier naar', nooit alleen decoratie. */
   --color-ok: #0e9384;
+  /* De zachte vulling en de inkt van een 'goed'-pil. ok zelf kan dat niet
+     dragen: #0e9384 haalt 3,8:1 op wit en nog minder op ok-soft, en een pil is
+     10px-tekst. ok-strong op ok-soft haalt 5,4:1. Dezelfde ruil als bij warn
+     en danger, die hun eigen soft-paar al hadden. */
+  --color-ok-soft: #ecfdf3;
+  --color-ok-strong: #067647;
   --color-warn: #b54708;
   --color-warn-soft: #fffaeb;
   --color-danger: #b42318;
@@ -91,8 +102,17 @@
   --shadow-card: 0 1px 3px rgb(16 24 40 / 0.08);
 }
 
+/**
+ * De pagina ligt op canvas en niet op wit.
+ *
+ * Zonder ondergrond is er geen verschil tussen "het blad" en "de pagina", en
+ * dan zweeft elke tabel in het niets. Met canvas eronder draagt de witte kaart
+ * in de schil de inhoud, precies zoals het ontwerp het tekent. Het inlogscherm
+ * zet zijn eigen donkere vlak en merkt hier niets van; afdrukken forceert wit,
+ * zie onderaan.
+ */
 body {
-  background: var(--color-surface);
+  background: var(--color-canvas);
   color: var(--color-ink);
 }
 
@@ -201,6 +221,10 @@ body {
   .report {
     max-width: none;
     padding: 0;
+    margin: 0;
+    border: 0;
+    background: #fff;
+    box-shadow: none;
   }
 
   .no-print {

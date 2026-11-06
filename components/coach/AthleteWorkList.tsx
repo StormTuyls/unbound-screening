@@ -107,7 +107,7 @@ export function AthleteWorkList({
                   .join(" · ");
 
                 return (
-                  <tr key={athlete.id} className="border-b border-hairline/70">
+                  <tr key={athlete.id} className="border-b border-rule">
                     <td className="py-2 pr-4">
                       <Link
                         href={`/coach/athletes/${athlete.id}/screening`}
