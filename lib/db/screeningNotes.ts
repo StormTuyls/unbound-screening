@@ -14,13 +14,25 @@ import { query, queryOne } from "@/lib/db/sql";
 
 export type NoteSeverity = "info" | "watch" | "action";
 
+/**
+ * Sterkte of ontwikkelpunt, voor de twee genummerde tabellen op pagina 1 van
+ * het rapport. Null is een gewone vlag: wel in het dossier, niet op de kaft.
+ * Los van severity, want dat zegt hoe dringend iets is en niet of het een plus
+ * of een min is.
+ */
+export type NoteKind = "strength" | "development";
+
 export interface ScreeningNote {
   id: number;
   metricKey: string | null;
   severity: NoteSeverity;
+  kind: NoteKind | null;
+  rank: number | null;
   state: "open" | "resolved";
   body: string;
   action: string | null;
+  /** Het werkdoel voor de volgende test. Zie de kolomopmerking. */
+  target: string | null;
   authorName: string | null;
   createdAt: string;
   resolvedAt: string | null;
@@ -28,20 +40,26 @@ export interface ScreeningNote {
 
 export async function listNotes(sessionId: string): Promise<ScreeningNote[]> {
   const rows = await query<Record<string, unknown>>(
-    `select id, metric_key, severity, state, body, action, author_name,
-            created_at, resolved_at
+    // Genummerd eerst, in hun eigen volgorde; de rest daarachter zoals
+    // voorheen. Zo leest de lijst op het scherm in dezelfde volgorde als de
+    // tabellen op pagina 1.
+    `select id, metric_key, severity, kind, rank, state, body, action, target,
+            author_name, created_at, resolved_at
        from medical.screening_notes
       where session_id = $1
-      order by state, severity desc, created_at`,
+      order by rank nulls last, state, severity desc, created_at`,
     [sessionId],
   );
   return rows.map((row) => ({
     id: Number(row.id),
     metricKey: (row.metric_key as string | null) ?? null,
     severity: row.severity as NoteSeverity,
+    kind: (row.kind as NoteKind | null) ?? null,
+    rank: row.rank === null ? null : Number(row.rank),
     state: row.state as "open" | "resolved",
     body: row.body as string,
     action: (row.action as string | null) ?? null,
+    target: (row.target as string | null) ?? null,
     authorName: (row.author_name as string | null) ?? null,
     createdAt: (row.created_at as Date).toISOString(),
     resolvedAt: row.resolved_at ? (row.resolved_at as Date).toISOString() : null,
@@ -54,19 +72,23 @@ export async function addNote(
     athleteId: string;
     metricKey: string | null;
     severity: NoteSeverity;
+    kind: NoteKind | null;
+    rank: number | null;
     body: string;
     action: string | null;
+    target: string | null;
   },
   actor: { id: string | null; name: string | null; isAdmin: boolean },
 ): Promise<number> {
   const row = await queryOne<{ id: number }>(
     `insert into medical.screening_notes
-       (athlete_id, session_id, metric_key, severity, body, action,
-        author_profile_id, author_name)
-     values ($1, $2, $3, $4, $5, $6, $7, $8)
+       (athlete_id, session_id, metric_key, severity, kind, rank, body, action,
+        target, author_profile_id, author_name)
+     values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
      returning id`,
     [input.athleteId, input.sessionId, input.metricKey, input.severity,
-     input.body, input.action, actor.id, actor.name],
+     input.kind, input.rank, input.body, input.action, input.target,
+     actor.id, actor.name],
   );
   if (!row) throw new Error("opmerking kon niet worden opgeslagen");
 
@@ -77,7 +99,7 @@ export async function addNote(
     entitySchema: "medical",
     entityTable: "screening_notes",
     entityId: String(row.id),
-    detail: { severity: input.severity, metricKey: input.metricKey },
+    detail: { severity: input.severity, kind: input.kind, metricKey: input.metricKey },
   });
   return Number(row.id);
 }

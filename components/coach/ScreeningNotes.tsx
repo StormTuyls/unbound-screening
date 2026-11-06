@@ -38,7 +38,12 @@ export function ScreeningNotes({
   const [body, setBody] = useState("");
   const [metricKey, setMetricKey] = useState("");
   const [severity, setSeverity] = useState<"info" | "watch" | "action">("watch");
+  // Leeg is een gewone vlag. Pas wie hier kiest zet de opmerking op pagina 1
+  // van het rapport, en dan pas heeft een nummer zin.
+  const [kind, setKind] = useState<"" | "strength" | "development">("");
+  const [rank, setRank] = useState("");
   const [action, setAction] = useState("");
+  const [target, setTarget] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -61,14 +66,20 @@ export function ScreeningNotes({
       action: "add",
       metricKey: metricKey === "" ? null : metricKey,
       severity,
+      kind: kind === "" ? null : kind,
+      rank: kind === "" || rank.trim() === "" ? null : Number(rank),
       body: body.trim(),
       note: action.trim() === "" ? null : action.trim(),
+      target: target.trim() === "" ? null : target.trim(),
     });
     if (ok) {
       setBody("");
       setAction("");
+      setTarget("");
       setMetricKey("");
       setSeverity("watch");
+      setKind("");
+      setRank("");
       setOpen(false);
     }
   }
@@ -119,6 +130,15 @@ export function ScreeningNotes({
                   {t(note.severity as "watch")}
                 </span>
                 <span className="text-xs text-ink-muted">{label(note.metricKey)}</span>
+                {/* Wat op pagina 1 van het rapport komt, is hier te zien. Zonder
+                    dit merk je pas bij het afdrukken welke opmerking op de kaft
+                    staat. */}
+                {note.kind && (
+                  <span className="rounded bg-canvas px-1.5 py-0.5 text-[10px] text-ink-muted">
+                    {t(note.kind === "strength" ? "strength" : "development")}
+                    {note.rank !== null && ` ${note.rank}`}
+                  </span>
+                )}
                 {note.state === "resolved" && (
                   <span className="text-xs text-ink-faint">· {t("resolved")}</span>
                 )}
@@ -129,6 +149,11 @@ export function ScreeningNotes({
               </p>
               {note.action && (
                 <p className="mt-0.5 text-xs text-ink-muted">→ {note.action}</p>
+              )}
+              {note.target && (
+                <p className="mt-0.5 text-xs text-ink-muted">
+                  {t("target")}: {note.target}
+                </p>
               )}
 
               <div className="mt-1 flex flex-wrap items-baseline gap-2 text-xs text-ink-faint">
@@ -193,12 +218,56 @@ export function ScreeningNotes({
             </label>
           </div>
 
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="text-sm">
+              <span className="mb-1 block text-xs text-ink-muted">{t("kind")}</span>
+              <select
+                value={kind}
+                onChange={(e) => setKind(e.target.value as "" | "strength" | "development")}
+                className="w-full rounded border border-hairline bg-surface px-2 py-1.5 text-base"
+              >
+                <option value="">{t("kindNone")}</option>
+                <option value="strength">{t("strength")}</option>
+                <option value="development">{t("development")}</option>
+              </select>
+            </label>
+
+            {/* Alleen zichtbaar als er een soort gekozen is: een nummer zonder
+                soort weigert de databank, en een leeg veld dat niets mag
+                bevatten is een val. */}
+            {kind !== "" && (
+              <label className="text-sm">
+                <span className="mb-1 block text-xs text-ink-muted">{t("rank")}</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  min="1"
+                  max="99"
+                  value={rank}
+                  onChange={(e) => setRank(e.target.value)}
+                  className="w-full rounded border border-hairline bg-surface px-2 py-1.5 text-base"
+                />
+                <span className="mt-1 block text-xs text-ink-faint">{t("rankHint")}</span>
+              </label>
+            )}
+          </div>
+
           <label className="block text-sm">
             <span className="mb-1 block text-xs text-ink-muted">{t("action_field")}</span>
             <input
               value={action}
               onChange={(e) => setAction(e.target.value)}
               placeholder={t("actionHint")}
+              className="w-full rounded border border-hairline bg-surface px-2 py-1.5 text-base"
+            />
+          </label>
+
+          <label className="block text-sm">
+            <span className="mb-1 block text-xs text-ink-muted">{t("target")}</span>
+            <input
+              value={target}
+              onChange={(e) => setTarget(e.target.value)}
+              placeholder={t("targetHint")}
               className="w-full rounded border border-hairline bg-surface px-2 py-1.5 text-base"
             />
           </label>

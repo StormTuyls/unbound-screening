@@ -4,6 +4,7 @@ import {
   readLatestScreeningReport,
   readScreeningReport,
 } from "@/lib/db/screening";
+import { listNotes } from "@/lib/db/screeningNotes";
 import {
   SCREENING_SNAPSHOT_VERSION,
   type FrozenScreeningSnapshot,
@@ -66,6 +67,27 @@ export async function collectScreening(
     ruleEvidence: row.ruleEvidence,
     protocolConfirmed: row.protocolConfirmed,
     inputs: row.inputs ?? null,
+    coverRank: row.coverRank,
+  }));
+
+  // De opmerkingen reizen mee. Het label komt uit de uitkomsten die we net
+  // hebben, want die dragen het al in beide talen; een opmerking over een
+  // metriek die deze sessie niet mat houdt alleen zijn sleutel.
+  const labels = new Map(
+    session.results.map((row) => [row.metricKey, [row.metricLabelNl, row.metricLabelEn] as const]),
+  );
+  const observations = (await listNotes(sessionId)).map((note) => ({
+    id: note.id,
+    kind: note.kind,
+    rank: note.rank,
+    severity: note.severity,
+    state: note.state,
+    body: note.body,
+    action: note.action,
+    target: note.target,
+    metricKey: note.metricKey,
+    metricLabelNl: note.metricKey ? (labels.get(note.metricKey)?.[0] ?? null) : null,
+    metricLabelEn: note.metricKey ? (labels.get(note.metricKey)?.[1] ?? null) : null,
   }));
 
   const body = {
@@ -81,6 +103,7 @@ export async function collectScreening(
     unclassified: results.filter(
       (r) => r.kind === "absolute" && r.status === "computed" && r.bandStatus === null,
     ).length,
+    observations,
   };
 
   return { ...body, contentHash: contentHashOf(body), generatedAt: new Date().toISOString() };

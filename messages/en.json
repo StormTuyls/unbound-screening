@@ -349,6 +349,7 @@
     "screeningInvalid": "This screening is incomplete or not valid.",
     "screeningUnknownMetric": "Unknown metric: {key}. Reload the page, the library may have changed.",
     "screeningNoMeasurements": "Enter at least one measurement.",
+    "noteInvalid": "No usable note was supplied.",
     "nameMismatch": "The name you typed does not match this athlete.",
     "approvedLocked": "This file has been approved and can no longer be changed.",
     "alreadyApproved": "This intake has already been approved.",
@@ -580,7 +581,11 @@
     "rules": "Thresholds used",
     "ruleVersion": "rule v{n}",
     "exportJson": "JSON",
-    "exportCsv": "CSV"
+    "exportCsv": "CSV",
+    "coverFigures": "Key figures",
+    "decision": "Conclusion",
+    "legend": "Benchmarks and how to read this",
+    "partOf": "Part {n} of {total}"
   },
   "library": {
     "title": "Reference values",
@@ -645,7 +650,17 @@
     "openCount": "{count, plural, one {# open flag} other {# open flags}}",
     "by": "by",
     "saveFailed": "Could not save this note.",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "strengths": "Strengths",
+    "developments": "Development points",
+    "kind": "Type",
+    "kindNone": "Just a flag",
+    "strength": "Strength",
+    "development": "Development point",
+    "rank": "Number",
+    "rankHint": "Its place in the table on page 1. May be left empty.",
+    "target": "Target",
+    "targetHint": "Where should this be at the next test?"
   },
   "coach": {
     "signedInAs": "{practice} · signed in as {name}",

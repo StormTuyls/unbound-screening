@@ -21,15 +21,22 @@ import { createHash } from "node:crypto";
  */
 
 /**
- * 2 sinds de genormaliseerde uitkomsten.
+ * 3 sinds de kaft van het rapport.
  *
- * Een snapshot van versie 1 blijft geldig en leesbaar: er is niets uit weg.
- * Andersom niet, en daar gaat dit nummer over. Een rij met kind "normalised"
- * of met inputs {source, bodyMassKg} bestond in versie 1 niet, dus een
- * renderer die alleen versie 1 kent hoort te weigeren in plaats van de rij als
- * een delta te tonen.
+ * Een snapshot van versie 1 of 2 blijft geldig en leesbaar: er is niets uit
+ * weg. Andersom niet, en daar gaat dit nummer over. Een rij met kind
+ * "normalised" of met inputs {source, bodyMassKg} bestond in versie 1 niet,
+ * dus een renderer die alleen versie 1 kent hoort te weigeren in plaats van de
+ * rij als een delta te tonen.
+ *
+ * Versie 3 voegt coverRank en notes toe. Die laatste staan hier en niet in een
+ * query omdat het rapport uitsluitend uit een bevroren versie rendert: zonder
+ * de opmerkingen in het snapshot zou pagina 1 ofwel leeg zijn, ofwel de stand
+ * van vandaag tonen onder de datum van toen. Een rapport van versie 2 heeft
+ * geen notes en krijgt dus geen sterktes en ontwikkelpunten; dat is juist,
+ * want die waren er toen niet.
  */
-export const SCREENING_SNAPSHOT_VERSION = 2;
+export const SCREENING_SNAPSHOT_VERSION = 3;
 
 export interface SnapshotResult {
   metricKey: string;
@@ -52,6 +59,30 @@ export interface SnapshotResult {
   ruleEvidence: string | null;
   protocolConfirmed: boolean;
   inputs: Record<string, number | null> | null;
+  /** Plek op pagina 1, of null. Sinds schemaVersion 3; daarvoor ontbreekt hij. */
+  coverRank?: number | null;
+}
+
+/**
+ * Een opmerking zoals hij in het rapport staat.
+ *
+ * Meereizend en niet opnieuw op te vragen, om dezelfde reden als de regels: de
+ * behandelaar kan een vlag sluiten of een werkdoel bijstellen, en een afdruk
+ * van toen hoort te zeggen wat er toen stond. Het metriekenlabel staat er in
+ * beide talen bij, zodat de renderer nergens terug hoeft te joinen.
+ */
+export interface SnapshotNote {
+  id: number;
+  kind: "strength" | "development" | null;
+  rank: number | null;
+  severity: string;
+  state: string;
+  body: string;
+  action: string | null;
+  target: string | null;
+  metricKey: string | null;
+  metricLabelNl: string | null;
+  metricLabelEn: string | null;
 }
 
 export interface ScreeningSnapshot {
@@ -68,6 +99,14 @@ export interface ScreeningSnapshot {
   results: SnapshotResult[];
   /** Hoeveel metingen geen band kregen, en dus niet beoordeeld zijn. */
   unclassified: number;
+  /**
+   * Sterktes, ontwikkelpunten en losse vlaggen. Sinds schemaVersion 3.
+   *
+   * Niet "notes": dat veld hierboven is de contextregel van de sessie, één
+   * string die de tester bij het invoeren typt. Dit zijn de oordelen van de
+   * behandelaar, uit medical.screening_notes.
+   */
+  observations?: SnapshotNote[];
 }
 
 const frozen = Symbol("frozenScreening");
@@ -91,6 +130,14 @@ export function contentHashOf(snapshot: Omit<ScreeningSnapshot, "contentHash" | 
     results: snapshot.results.map((r) => [
       r.metricKey, r.side, r.kind, r.value, r.unit, r.status,
       r.unavailableReason, r.bandStatus, r.bandScore, r.ruleVersion,
+      r.coverRank ?? null,
+    ]),
+    // De opmerkingen tellen mee: een werkdoel bijstellen of een vlag sluiten
+    // verandert wat er op pagina 1 staat, en dus hoort er een nieuwe versie te
+    // komen. createdAt blijft erbuiten, net als generatedAt hierboven.
+    observations: (snapshot.observations ?? []).map((n) => [
+      n.id, n.kind, n.rank, n.severity, n.state, n.body, n.action, n.target,
+      n.metricKey,
     ]),
   };
   return createHash("sha256").update(JSON.stringify(canonical)).digest("hex");

@@ -96,6 +96,21 @@ body {
   color: var(--color-ink);
 }
 
+/* De voet van een onderdeel. Op het scherm scheidt hij de onderdelen, op
+   papier sluit hij er een af. */
+.report-foot {
+  margin-top: 1.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-hairline);
+  font-size: 10px;
+  color: var(--color-ink-muted);
+}
+
+/* Alleen op papier; op het scherm staat dit al in de kop van de kaft. */
+.report-running {
+  display: none;
+}
+
 /**
  * Elk invoerveld minstens 44px hoog.
  *
@@ -132,6 +147,39 @@ body {
   @page {
     size: A4;
     margin: 14mm;
+  }
+
+  /**
+   * Elk onderdeel begint op een nieuw vel.
+   *
+   * Geen min-height die een vel volmaakt: een blok met 49 regels loopt toch
+   * over twee vellen, en dan duwt margin-top:auto de voet naar de onderkant
+   * van het verkeerde vel.
+   */
+  .report-page {
+    break-before: page;
+  }
+
+  .report-page:first-child {
+    break-before: auto;
+  }
+
+  /**
+   * De kopregel herhaalt op elk vel. position:fixed is in afdrukmedia precies
+   * dat: de browser tekent hem opnieuw op elke pagina. Vandaar ook de
+   * bovenmarge op het rapport zelf, anders loopt de eerste regel eroverheen.
+   */
+  .report-running {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    font-size: 9px;
+    color: #555;
+  }
+
+  .report {
+    padding-top: 6mm;
   }
 
   html,

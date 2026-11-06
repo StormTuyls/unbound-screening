@@ -19,9 +19,15 @@ const add = z.object({
   action: z.literal("add"),
   metricKey: z.string().min(1).nullable(),
   severity: z.enum(["info", "watch", "action"]),
+  // Sterkte of ontwikkelpunt zet de opmerking op pagina 1 van het rapport;
+  // zonder soort blijft het een gewone vlag. Een nummer zonder soort weigert de
+  // databank, dus weigeren we hem hier al.
+  kind: z.enum(["strength", "development"]).nullable().default(null),
+  rank: z.number().int().positive().max(99).nullable().default(null),
   body: z.string().trim().min(1).max(2000),
   note: z.string().max(500).nullable(),
-});
+  target: z.string().trim().max(500).nullable().default(null),
+}).refine((v) => v.rank === null || v.kind !== null, { path: ["rank"] });
 
 const resolve = z.object({
   action: z.literal("resolve"),
@@ -49,7 +55,7 @@ export async function POST(
     };
 
     const parsed = bodySchema.safeParse(await request.json().catch(() => null));
-    if (!parsed.success) return badRequest("Expected a note.");
+    if (!parsed.success) return badRequest(t("noteInvalid"));
     const body = parsed.data;
 
     if (body.action === "resolve") {
@@ -69,8 +75,11 @@ export async function POST(
         athleteId: session.athleteId,
         metricKey: body.metricKey,
         severity: body.severity,
+        kind: body.kind,
+        rank: body.rank,
         body: body.body,
         action: body.note,
+        target: body.target,
       },
       actor,
     );

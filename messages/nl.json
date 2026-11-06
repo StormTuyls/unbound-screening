@@ -349,6 +349,7 @@
     "screeningInvalid": "Deze screening is niet volledig of niet geldig.",
     "screeningUnknownMetric": "Onbekende metriek: {key}. Ververs de pagina, de bibliotheek is mogelijk gewijzigd.",
     "screeningNoMeasurements": "Vul minstens één meting in.",
+    "noteInvalid": "Er is geen bruikbare opmerking meegestuurd.",
     "nameMismatch": "De ingetypte naam klopt niet met deze atleet.",
     "approvedLocked": "Dit dossier is goedgekeurd en niet meer te wijzigen.",
     "alreadyApproved": "Deze intake is al goedgekeurd.",
@@ -580,7 +581,11 @@
     "rules": "Gebruikte drempels",
     "ruleVersion": "regel v{n}",
     "exportJson": "JSON",
-    "exportCsv": "CSV"
+    "exportCsv": "CSV",
+    "coverFigures": "Kerncijfers",
+    "decision": "Besluit",
+    "legend": "Benchmarks en leeswijzer",
+    "partOf": "Onderdeel {n} van {total}"
   },
   "library": {
     "title": "Referentiewaarden",
@@ -645,7 +650,17 @@
     "openCount": "{count, plural, one {# open vlag} other {# open vlaggen}}",
     "by": "door",
     "saveFailed": "Deze opmerking kon niet opgeslagen worden.",
-    "cancel": "Annuleren"
+    "cancel": "Annuleren",
+    "strengths": "Sterktes",
+    "developments": "Ontwikkelpunten",
+    "kind": "Soort",
+    "kindNone": "Alleen een vlag",
+    "strength": "Sterkte",
+    "development": "Ontwikkelpunt",
+    "rank": "Nummer",
+    "rankHint": "De plek in de tabel op pagina 1. Leeg laten mag.",
+    "target": "Werkdoel",
+    "targetHint": "Waar moet dit staan bij de volgende test?"
   },
   "coach": {
     "signedInAs": "{practice} · aangemeld als {name}",

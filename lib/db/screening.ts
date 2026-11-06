@@ -584,6 +584,11 @@ export interface SessionView {
       bodyMassKg?: number | null;
     } | null;
     protocolConfirmed: boolean;
+    /**
+     * Plek op pagina 1 van het rapport, of null. De praktijk stelt dit in op
+     * de metriek; zie de kolomopmerking in 20261106090100.
+     */
+    coverRank: number | null;
     /** Herkomst van de regel die deze band gaf, of uitlegt waarom er geen is. FR-08. */
     ruleNote: string | null;
     ruleSource: string | null;
@@ -620,6 +625,7 @@ export async function getSession(
     `select d.metric_key, ti.side, d.derived_key, d.value, d.unit, d.status,
             d.unavailable_reason, d.band_status, d.band_score, d.inputs,
             m.label_nl as metric_label_nl, m.label_en as metric_label_en, m.decimals,
+            m.cover_rank,
             t.label_nl as test_label_nl, t.label_en as test_label_en,
             t.block, t.sort_order,
             p.protocol_confirmed, r.source_note, r.source_citation, r.evidence,
@@ -684,6 +690,7 @@ export async function getSession(
       bandScore: row.band_score === null ? null : Number(row.band_score),
       inputs: readSides(row.inputs),
       protocolConfirmed: row.protocol_confirmed as boolean,
+      coverRank: row.cover_rank === null ? null : Number(row.cover_rank),
       ruleNote: (row.source_note as string | null) ?? null,
       ruleSource: (row.source_citation as string | null) ?? null,
       ruleEvidence: (row.evidence as string | null) ?? null,
