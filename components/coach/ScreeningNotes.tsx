@@ -84,7 +84,7 @@ export function ScreeningNotes({
           <button
             type="button"
             onClick={() => setOpen(true)}
-            className="text-xs text-brand-700 underline"
+            className="inline-flex min-h-11 items-center text-xs text-brand-700 underline"
           >
             {t("add")}
           </button>
@@ -141,7 +141,7 @@ export function ScreeningNotes({
                     type="button"
                     disabled={busy}
                     onClick={() => post({ action: "resolve", noteId: note.id })}
-                    className="underline disabled:opacity-40"
+                    className="inline-flex min-h-11 items-center underline disabled:opacity-40"
                   >
                     {t("resolve")}
                   </button>
@@ -208,14 +208,14 @@ export function ScreeningNotes({
               type="button"
               onClick={save}
               disabled={busy || body.trim() === ""}
-              className="rounded bg-brand-700 px-3 py-1.5 text-sm text-white disabled:opacity-40"
+              className="inline-flex min-h-11 items-center rounded bg-brand-700 px-3 text-sm text-white disabled:opacity-40"
             >
               {busy ? t("adding") : t("add")}
             </button>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="rounded border border-hairline px-3 py-1.5 text-sm"
+              className="inline-flex min-h-11 items-center rounded border border-hairline px-3 text-sm"
             >
               {t("cancel")}
             </button>

@@ -133,7 +133,7 @@ export default async function ScreeningTrendPage({
                     {/* De tweelingweergave. Elke waarde die in de grafiek staat
                         is hier ook te lezen, zonder kleur en zonder muis. */}
                     <details className="mt-1">
-                      <summary className="cursor-pointer text-[10px] text-ink-muted">
+                      <summary className="min-h-11 cursor-pointer py-3.5 text-[10px] text-ink-muted">
                         {t("tableView")}
                       </summary>
                       <table className="mt-1 w-full text-[10px] tabular-nums">

@@ -130,18 +130,22 @@ export function MetricTrend({
             key={`m${i}`} cx={m.cx} cy={m.cy} r="3.5"
             fill={COLOR[m.side]} stroke="var(--color-surface)" strokeWidth="2"
           >
-            <title>
-              {m.point.date} · {sideLabel(m.side)} {m.point.value}
-            </title>
+            {/* Eén string en geen drie kinderen. React ondersteunt geen array
+                in een <title> en waarschuwt daarover bij elke render; de
+                ontwikkelserver stond er vol van. */}
+            <title>{`${m.point.date} · ${sideLabel(m.side)} ${m.point.value}`}</title>
           </circle>
         ))}
 
-        {/* Alleen het laatste punt draagt zijn waarde. */}
+        {/* Alleen het laatste punt draagt zijn waarde. In inkt en niet in de
+            reekskleur: series-1 haalt 3,8:1 op wit, en dat is onder de 4,5:1
+            die tekst nodig heeft. De lijnkleur zelf blijft, want die is op
+            kleurenblindheid afgestemd en een lijn mag op 3:1. Welke reeks het
+            is, staat al in de gekleurde stip ernaast en in de legenda. */}
         {l.endpoints.map((e) => (
           <text
             key={e.side} x={e.cx + 7} y={e.cy + 3}
-            className="text-[9px] tabular-nums"
-            fill={COLOR[e.side]}
+            className="fill-ink text-[9px] tabular-nums"
           >
             {e.value.toFixed(decimals)}
           </text>

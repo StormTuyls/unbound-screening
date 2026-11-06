@@ -136,19 +136,19 @@ export default async function ScreeningSessionPage({
       <div className="mb-6 flex flex-wrap gap-2 text-xs">
         <a
           href={`/coach/screening/${session.id}/print`}
-          className="rounded border border-hairline px-3 py-1.5 transition-colors hover:bg-canvas"
+          className="inline-flex min-h-11 items-center rounded border border-hairline px-3 transition-colors hover:bg-canvas"
         >
           {t("printReport")}
         </a>
         <a
           href={`/api/coach/screening/${session.id}/export?format=json`}
-          className="rounded border border-hairline px-3 py-1.5 transition-colors hover:bg-canvas"
+          className="inline-flex min-h-11 items-center rounded border border-hairline px-3 transition-colors hover:bg-canvas"
         >
           {t("exportJson")}
         </a>
         <a
           href={`/api/coach/screening/${session.id}/export?format=csv`}
-          className="rounded border border-hairline px-3 py-1.5 transition-colors hover:bg-canvas"
+          className="inline-flex min-h-11 items-center rounded border border-hairline px-3 transition-colors hover:bg-canvas"
         >
           {t("exportCsv")}
         </a>
@@ -263,7 +263,7 @@ export default async function ScreeningSessionPage({
           zonder enige manier om te vragen waar die drempel vandaan komt. */}
       {rules.size > 0 && (
         <details className="border-t border-hairline pt-3">
-          <summary className="cursor-pointer text-xs text-ink-muted">
+          <summary className="min-h-11 cursor-pointer py-3 text-xs text-ink-muted">
             {t("provenance")} ({rules.size})
           </summary>
           <p className="mt-2 text-xs text-ink-faint">{t("provenanceIntro")}</p>

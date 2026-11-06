@@ -152,7 +152,7 @@ export function RuleEditor({ metricKey, unit, initial }: RuleEditorProps) {
                   <button
                     type="button"
                     onClick={() => setRows((r) => r.filter((_, j) => j !== i))}
-                    className="text-xs text-ink-muted underline"
+                    className="inline-flex min-h-11 items-center text-xs text-ink-muted underline"
                   >
                     {t("removeBand")}
                   </button>
@@ -165,7 +165,7 @@ export function RuleEditor({ metricKey, unit, initial }: RuleEditorProps) {
         <button
           type="button"
           onClick={() => setRows((r) => [...r, { status: "", score: "", gte: "", lt: "" }])}
-          className="mt-2 text-xs text-brand-700 underline"
+          className="mt-2 inline-flex min-h-11 items-center text-xs text-brand-700 underline"
         >
           {t("addBand")}
         </button>
@@ -220,7 +220,7 @@ export function RuleEditor({ metricKey, unit, initial }: RuleEditorProps) {
         <span className="mt-1 block text-xs text-ink-faint">{t("noteHint")}</span>
       </label>
 
-      <label className="flex items-start gap-2 text-sm">
+      <label className="flex min-h-11 items-start gap-2 text-sm">
         <input
           type="checkbox"
           checked={enabled}
@@ -239,7 +239,7 @@ export function RuleEditor({ metricKey, unit, initial }: RuleEditorProps) {
         type="button"
         onClick={save}
         disabled={saving || rows.length === 0}
-        className="rounded bg-brand-700 px-4 py-2 text-sm text-white disabled:opacity-40"
+        className="inline-flex min-h-11 items-center rounded bg-brand-700 px-4 text-sm text-white disabled:opacity-40"
       >
         {saving ? t("saving") : t("saveVersion")}
       </button>

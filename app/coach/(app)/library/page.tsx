@@ -63,7 +63,7 @@ export default async function LibraryPage() {
                 <li key={rule.id}>
                   <Link
                     href={`/coach/library/${encodeURIComponent(rule.metricKey)}`}
-                    className="flex flex-col gap-1 py-2.5 transition-colors hover:bg-canvas sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
+                    className="flex min-h-11 flex-col justify-center gap-1 py-2.5 transition-colors hover:bg-canvas sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
                   >
                     <span className="min-w-0">
                       <span className="block text-sm">{name(rule)}</span>

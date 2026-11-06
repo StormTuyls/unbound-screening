@@ -50,7 +50,7 @@ export function ClassificationToggle({
         type="button"
         onClick={toggle}
         disabled={busy || (!enabled && !canEnable)}
-        className="rounded border border-hairline px-3 py-1.5 text-xs disabled:opacity-40"
+        className="inline-flex min-h-11 items-center rounded border border-hairline px-3 text-xs disabled:opacity-40"
       >
         {enabled ? t("turnOff") : t("turnOn")}
       </button>

@@ -172,7 +172,7 @@ export function AthleteWorkList({
                         href={`/coach/athletes/${athlete.id}/screening/new`}
                         className={`inline-flex min-h-11 items-center rounded-md px-3.5 text-xs ring-1 ring-inset transition-colors ${
                           overdue
-                            ? "bg-brand-600 text-surface ring-brand-600 hover:bg-brand-700"
+                            ? "bg-brand-700 text-surface ring-brand-700 hover:bg-brand-800"
                             : "ring-hairline hover:bg-canvas"
                         }`}
                       >

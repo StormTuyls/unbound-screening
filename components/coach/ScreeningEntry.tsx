@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { type FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { postJson } from "@/lib/postJson";
@@ -96,7 +96,8 @@ export function ScreeningEntry({
 
   const filled = Object.values(values).filter((v) => v.trim() !== "").length;
 
-  async function save() {
+  async function save(event: FormEvent) {
+    event.preventDefault();
     setSaving(true);
     setError(null);
 
@@ -135,131 +136,137 @@ export function ScreeningEntry({
   }
 
   return (
-    <div className="space-y-8">
-      <section className="grid gap-3 sm:grid-cols-3">
-        <label className="text-sm">
-          <span className="mb-1 block text-xs text-ink-muted">{t("date")}</span>
-          <input
-            type="date"
-            value={occurredOn}
-            onChange={(e) => setOccurredOn(e.target.value)}
-            className="w-full rounded border border-hairline bg-surface px-2 py-1.5 text-base"
-          />
-        </label>
-        <label className="text-sm">
-          {/* Spec §8: relatieve kracht gebruikt de massa van DIE dag. Hij wordt
-              op de sessie gekopieerd, niet uit het profiel gelezen. */}
-          <span className="mb-1 block text-xs text-ink-muted">{t("bodyMass")}</span>
-          <input
-            type="number"
-            inputMode="decimal"
-            step="0.1"
-            value={bodyMass}
-            onChange={(e) => setBodyMass(e.target.value)}
-            className="w-full rounded border border-hairline bg-surface px-2 py-1.5 text-base"
-          />
-        </label>
-        <label className="text-sm sm:col-span-1">
-          <span className="mb-1 block text-xs text-ink-muted">{t("context")}</span>
-          <input
-            type="text"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            placeholder={t("contextHint")}
-            className="w-full rounded border border-hairline bg-surface px-2 py-1.5 text-base"
-          />
-        </label>
-      </section>
-
-      {blocks.map(([block, items]) => (
-        <section key={block}>
-          <h2 className="mb-2 text-sm font-medium">{t(`blocks.${block}` as "blocks.core")}</h2>
-          <ul className="divide-y divide-hairline border-t border-hairline">
-            {items.map((test) => (
-              <li
-                key={test.metricKey}
-                className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
-              >
-                <div className="min-w-0">
-                  <span className="block text-sm">{test.label}</span>
-                  <span className="text-xs text-ink-faint">
-                    {UNIT_LABELS[test.unit] ?? test.unit}
-                    {/* Eerlijk zijn over wat dit getal straks oplevert. Een
-                        tester die weet dat een test niet scoort, weet ook
-                        waarom er later geen band staat. */}
-                    {!test.classifies && ` · ${t("noBandYet")}`}
-                    {!test.protocolConfirmed && ` · ${t("protocolNotFixed")}`}
-                  </span>
-                </div>
-
-                <div className="flex shrink-0 items-center gap-2">
-                  {(test.perSide ? (["left", "right"] as const) : (["bilateral"] as const)).map(
-                    (side) => (
-                      <label key={side} className="flex items-center gap-1">
-                        {test.perSide && (
-                          <span className="w-3 text-[10px] text-ink-faint uppercase">
-                            {side === "left" ? "L" : "R"}
-                          </span>
-                        )}
-                        {test.unit === "score" ? (
-                          <select
-                            value={values[`${test.metricKey}|${side}`] ?? ""}
-                            onChange={(e) =>
-                              setValues((v) => ({
-                                ...v,
-                                [`${test.metricKey}|${side}`]: e.target.value,
-                              }))
-                            }
-                            className="w-20 rounded border border-hairline bg-surface px-2 py-1.5 text-base"
-                          >
-                            <option value="">-</option>
-                            {[0, 1, 2, 3].map((n) => (
-                              <option key={n} value={n}>
-                                {n}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            type="number"
-                            inputMode="decimal"
-                            step={test.decimals === 0 ? "1" : "0.1"}
-                            value={values[`${test.metricKey}|${side}`] ?? ""}
-                            onChange={(e) =>
-                              setValues((v) => ({
-                                ...v,
-                                [`${test.metricKey}|${side}`]: e.target.value,
-                              }))
-                            }
-                            /* 16px, anders zoomt iOS bij focus in op het veld. */
-                            className="w-20 rounded border border-hairline bg-surface px-2 py-1.5 text-base"
-                          />
-                        )}
-                      </label>
-                    ),
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
+    // Een echt formulier, zodat Enter bewaart. Het <fieldset> is er voor de
+    // andere helft daarvan: zolang het bewaren loopt staat alles op slot, en
+    // dat is één attribuut in plaats van een disabled per veld.
+    <form onSubmit={save}>
+      <fieldset disabled={saving} className="space-y-8">
+        <section className="grid gap-3 sm:grid-cols-3">
+          <label className="text-sm">
+            <span className="mb-1 block text-xs text-ink-muted">{t("date")}</span>
+            <input
+              type="date"
+              value={occurredOn}
+              onChange={(e) => setOccurredOn(e.target.value)}
+              className="w-full rounded border border-hairline bg-surface px-2 py-1.5 text-base"
+            />
+          </label>
+          <label className="text-sm">
+            {/* Spec §8: relatieve kracht gebruikt de massa van DIE dag. Hij wordt
+                op de sessie gekopieerd, niet uit het profiel gelezen. */}
+            <span className="mb-1 block text-xs text-ink-muted">{t("bodyMass")}</span>
+            <input
+              type="number"
+              inputMode="decimal"
+              step="0.1"
+              value={bodyMass}
+              onChange={(e) => setBodyMass(e.target.value)}
+              className="w-full rounded border border-hairline bg-surface px-2 py-1.5 text-base"
+            />
+          </label>
+          <label className="text-sm sm:col-span-1">
+            <span className="mb-1 block text-xs text-ink-muted">{t("context")}</span>
+            <input
+              type="text"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder={t("contextHint")}
+              className="w-full rounded border border-hairline bg-surface px-2 py-1.5 text-base"
+            />
+          </label>
         </section>
-      ))}
 
-      {error && <p className="text-sm text-danger">{error}</p>}
+        {blocks.map(([block, items]) => (
+          <section key={block}>
+            <h2 className="mb-2 text-sm font-medium">{t(`blocks.${block}` as "blocks.core")}</h2>
+            <ul className="divide-y divide-hairline border-t border-hairline">
+              {items.map((test) => (
+                <li
+                  key={test.metricKey}
+                  className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
+                >
+                  <div className="min-w-0">
+                    <span className="block text-sm">{test.label}</span>
+                    <span className="text-xs text-ink-faint">
+                      {UNIT_LABELS[test.unit] ?? test.unit}
+                      {/* Eerlijk zijn over wat dit getal straks oplevert. Een
+                          tester die weet dat een test niet scoort, weet ook
+                          waarom er later geen band staat. */}
+                      {!test.classifies && ` · ${t("noBandYet")}`}
+                      {!test.protocolConfirmed && ` · ${t("protocolNotFixed")}`}
+                    </span>
+                  </div>
 
-      <div className="sticky bottom-0 flex items-center justify-between gap-4 border-t border-hairline bg-canvas py-3">
-        <span className="text-xs text-ink-muted">
-          {filled === 0 ? t("nothingEntered") : t("measurements", { count: filled })}
-        </span>
-        <button
-          type="button"
-          onClick={save}
-          disabled={saving || filled === 0}
-          className="rounded bg-brand-700 px-4 py-2 text-sm text-white disabled:opacity-40"
-        >
-          {saving ? t("saving") : t("save")}
-        </button>
-      </div>
-    </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    {(test.perSide ? (["left", "right"] as const) : (["bilateral"] as const)).map(
+                      (side) => (
+                        <label key={side} className="flex items-center gap-1">
+                          {test.perSide && (
+                            <span className="w-3 text-[10px] text-ink-faint uppercase">
+                              {side === "left" ? "L" : "R"}
+                            </span>
+                          )}
+                          {test.unit === "score" ? (
+                            <select
+                              value={values[`${test.metricKey}|${side}`] ?? ""}
+                              onChange={(e) =>
+                                setValues((v) => ({
+                                  ...v,
+                                  [`${test.metricKey}|${side}`]: e.target.value,
+                                }))
+                              }
+                              className="w-20 rounded border border-hairline bg-surface px-2 py-1.5 text-base"
+                            >
+                              <option value="">-</option>
+                              {[0, 1, 2, 3].map((n) => (
+                                <option key={n} value={n}>
+                                  {n}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <input
+                              type="number"
+                              inputMode="decimal"
+                              step={test.decimals === 0 ? "1" : "0.1"}
+                              value={values[`${test.metricKey}|${side}`] ?? ""}
+                              onChange={(e) =>
+                                setValues((v) => ({
+                                  ...v,
+                                  [`${test.metricKey}|${side}`]: e.target.value,
+                                }))
+                              }
+                              /* 16px, anders zoomt iOS bij focus in op het veld. */
+                              className="w-20 rounded border border-hairline bg-surface px-2 py-1.5 text-base"
+                            />
+                          )}
+                        </label>
+                      ),
+                    )}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
+
+        {error && <p className="text-sm text-danger">{error}</p>}
+
+        {/* De onderrand van een iPad is de thuisbalk. Zonder de inset valt
+            de bewaarknop daar deels achter. */}
+        <div className="sticky bottom-0 flex items-center justify-between gap-4 border-t border-hairline bg-canvas pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+          <span className="text-xs text-ink-muted">
+            {filled === 0 ? t("nothingEntered") : t("measurements", { count: filled })}
+          </span>
+          <button
+            type="submit"
+            disabled={saving || filled === 0}
+            className="inline-flex min-h-11 items-center rounded bg-brand-700 px-4 text-sm text-white disabled:opacity-40"
+          >
+            {saving ? t("saving") : t("save")}
+          </button>
+        </div>
+      </fieldset>
+    </form>
   );
 }
