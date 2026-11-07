@@ -33,7 +33,7 @@ export default async function ScreeningTrendPage({
 
   const access = await checkCoach();
   if (access.kind === "anonymous") {
-    redirect(`/coach/login?next=/coach/athletes/${athleteId}/screening`);
+    redirect(`/praktijk/login?next=/praktijk/athletes/${athleteId}/screening`);
   }
   if (access.kind !== "coach") notFound();
 

@@ -121,7 +121,7 @@ function ReportFoot({ label }: { label: string }) {
  *
  * Rendert UITSLUITEND uit een bevroren versie, nooit uit de huidige stand. Dat
  * is bij een screening scherper dan bij een intake: de praktijk kan op
- * /coach/library een drempel bijstellen, en zonder deze regel zou een afdruk
+ * /praktijk/library een drempel bijstellen, en zonder deze regel zou een afdruk
  * van vorig jaar met de drempels van vandaag opnieuw ingedeeld worden.
  *
  * HOEVEEL PAGINA'S ER ZIJN, BEPAALT DE INHOUD.
@@ -150,7 +150,7 @@ export default async function ScreeningPrintPage({
 
   const access = await checkCoach();
   if (access.kind === "anonymous") {
-    redirect(`/coach/login?next=/coach/screening/${sessionId}/print`);
+    redirect(`/praktijk/login?next=/praktijk/screening/${sessionId}/print`);
   }
   if (access.kind !== "coach") notFound();
 

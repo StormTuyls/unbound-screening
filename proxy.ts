@@ -63,5 +63,5 @@ export const config = {
   //
   // /api/health blijft er bewust buiten. Die route kent geen gebruiker en moet
   // goedkoop blijven, want hij wordt gepold.
-  matcher: ["/", "/coach/:path*", "/api/coach/:path*", "/api/locale"],
+  matcher: ["/", "/praktijk/:path*", "/api/coach/:path*", "/api/locale"],
 };

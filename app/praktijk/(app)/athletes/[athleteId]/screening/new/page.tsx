@@ -30,7 +30,7 @@ export default async function NewScreeningPage({
 
   const access = await checkCoach();
   if (access.kind === "anonymous") {
-    redirect(`/coach/login?next=/coach/athletes/${athleteId}/screening/new`);
+    redirect(`/praktijk/login?next=/praktijk/athletes/${athleteId}/screening/new`);
   }
   if (access.kind !== "coach") notFound();
 
@@ -72,10 +72,10 @@ export default async function NewScreeningPage({
 
   return (
     <>
-      {/* Wees naar het verloop van deze atleet, niet naar /coach/athletes/<id>:
+      {/* Wees naar het verloop van deze atleet, niet naar /praktijk/athletes/<id>:
           die route bestaat niet en heeft nooit bestaan. */}
       <Link
-        href={`/coach/athletes/${athleteId}/screening`}
+        href={`/praktijk/athletes/${athleteId}/screening`}
         className="inline-flex min-h-11 items-center text-xs text-ink-muted underline"
       >
         {athlete.name ?? t("title")}

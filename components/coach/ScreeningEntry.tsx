@@ -132,7 +132,7 @@ export function ScreeningEntry({
     // saving blijft hier bewust staan: de navigatie volgt, en een knop die
     // tussendoor weer aanklikbaar wordt levert een tweede sessie op.
     const { sessionId } = result.data as { sessionId: string };
-    router.push(`/coach/screening/${sessionId}`);
+    router.push(`/praktijk/screening/${sessionId}`);
   }
 
   return (

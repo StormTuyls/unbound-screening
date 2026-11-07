@@ -747,8 +747,6 @@
   "athletes": {
     "title": "Athletes",
     "activeFiles": "{count, plural, one {# active file} other {# active files}}",
-    "thisMonth": "This month",
-    "thisMonthNote": "screenings · last month {n}",
     "overdue": "Longer than {days} days",
     "overdueNote": "athletes without a new measurement",
     "openFlags": "Open flags",
@@ -770,6 +768,21 @@
     "report": "Report",
     "enter": "Enter",
     "none": "No athletes yet.",
-    "noMatch": "No athletes found."
+    "noMatch": "No athletes found.",
+    "allFiles": "All files",
+    "allFilesNote": "the whole practice",
+    "awaitingReview": "Awaiting review",
+    "awaitingReviewNote": "intake submitted, not yet approved",
+    "colIntake": "Intake",
+    "shownOf": "{shown} of {total}",
+    "reviewIntake": "Review",
+    "intakeStatus": {
+      "draft": "draft",
+      "submitted": "submitted",
+      "in_review": "in review",
+      "approved": "approved",
+      "none": "no intake"
+    },
+    "monthStat": "{n} screenings this month, {prev} last"
   }
 }

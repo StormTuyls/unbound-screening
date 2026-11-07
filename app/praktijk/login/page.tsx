@@ -22,7 +22,7 @@ export default async function CoachLoginPage({
 
   // Al ingelogd: doorlopen naar waar hij heen wilde.
   const coach = await currentCoach();
-  if (coach) redirect(next && next.startsWith("/") ? next : "/coach");
+  if (coach) redirect(next && next.startsWith("/") ? next : "/praktijk");
 
   return <CoachLogin next={next ?? null} />;
 }

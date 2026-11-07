@@ -17,7 +17,7 @@ const BLOCK_ORDER = ["anthropometry", "mobility_ll", "mobility_ul", "core",
 /** Welke drempels er gelden, en welke daarvan mogen indelen. FR-02. */
 export default async function LibraryPage() {
   const access = await checkCoach();
-  if (access.kind === "anonymous") redirect("/coach/login?next=/coach/library");
+  if (access.kind === "anonymous") redirect("/praktijk/login?next=/praktijk/library");
   if (access.kind !== "coach") notFound();
 
   const rules = await listRules();
@@ -62,7 +62,7 @@ export default async function LibraryPage() {
               {items.map((rule) => (
                 <li key={rule.id}>
                   <Link
-                    href={`/coach/library/${encodeURIComponent(rule.metricKey)}`}
+                    href={`/praktijk/library/${encodeURIComponent(rule.metricKey)}`}
                     className="flex min-h-11 flex-col justify-center gap-1 py-2.5 transition-colors hover:bg-canvas sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
                   >
                     <span className="min-w-0">

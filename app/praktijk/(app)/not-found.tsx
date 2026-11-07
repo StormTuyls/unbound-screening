@@ -14,7 +14,7 @@ export default async function NotFound() {
       <h1 className="text-2xl font-semibold tracking-tight">{t("notFound")}</h1>
       <p className="mt-1 text-sm text-ink-muted">{t("notFoundNote")}</p>
       <Link
-        href="/coach"
+        href="/praktijk"
         className="mt-4 inline-flex min-h-11 items-center text-sm underline"
       >
         {t("backToAthletes")}

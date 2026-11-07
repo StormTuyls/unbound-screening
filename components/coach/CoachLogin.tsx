@@ -47,7 +47,7 @@ export function CoachLogin({ next }: { next: string | null }) {
       // login niet tegenhouden.
       await fetch("/api/locale/sync", { method: "POST" }).catch(() => {});
 
-      router.replace(next && next.startsWith("/") ? next : "/coach");
+      router.replace(next && next.startsWith("/") ? next : "/praktijk");
       router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "something went wrong");
