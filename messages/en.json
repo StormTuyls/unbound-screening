@@ -783,6 +783,27 @@
       "approved": "approved",
       "none": "no intake"
     },
-    "monthStat": "{n} screenings this month, {prev} last"
+    "monthStat": "{n} screenings this month, {prev} last",
+    "tabDossier": "File",
+    "tabScreening": "Screening",
+    "tabIntakes": "Intakes",
+    "lastIntakeTitle": "Last intake",
+    "lastScreeningTitle": "Last screening",
+    "noIntakeYet": "No intake submitted yet.",
+    "noScreeningYet": "Not screened yet.",
+    "timelineTitle": "Timeline",
+    "timelineNote": "Intakes, injuries and measurements side by side",
+    "timelineEmpty": "Nothing recorded for this athlete yet.",
+    "kindIntake": "Intake",
+    "kindScreening": "Screening",
+    "kindInjury": "Injury",
+    "measurementsCount": "{n, plural, one {# measurement} other {# measurements}}",
+    "openReport": "Open the report",
+    "toTrend": "Trend per metric",
+    "approvedOn": "approved on {date}",
+    "submittedOn": "submitted on {date}",
+    "startedOn": "started on {date}",
+    "colWhen": "When",
+    "colStatus": "Status"
   }
 }

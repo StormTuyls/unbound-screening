@@ -204,7 +204,7 @@ export function AthleteWorkList({
                       }`}
                     >
                       <Link
-                        href={`/praktijk/athletes/${athlete.id}/screening`}
+                        href={`/praktijk/athletes/${athlete.id}`}
                         className="flex min-h-11 flex-col justify-center"
                       >
                         <span className="font-medium underline-offset-2 hover:underline">

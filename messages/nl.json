@@ -783,6 +783,27 @@
       "approved": "goedgekeurd",
       "none": "geen intake"
     },
-    "monthStat": "{n} screenings deze maand, {prev} vorige"
+    "monthStat": "{n} screenings deze maand, {prev} vorige",
+    "tabDossier": "Dossier",
+    "tabScreening": "Screening",
+    "tabIntakes": "Intakes",
+    "lastIntakeTitle": "Laatste intake",
+    "lastScreeningTitle": "Laatste screening",
+    "noIntakeYet": "Nog geen intake aangeleverd.",
+    "noScreeningYet": "Nog niet gescreend.",
+    "timelineTitle": "Tijdlijn",
+    "timelineNote": "Intakes, blessures en metingen door elkaar heen",
+    "timelineEmpty": "Er is nog niets vastgelegd voor deze atleet.",
+    "kindIntake": "Intake",
+    "kindScreening": "Screening",
+    "kindInjury": "Blessure",
+    "measurementsCount": "{n, plural, one {# meting} other {# metingen}}",
+    "openReport": "Rapport openen",
+    "toTrend": "Verloop per metriek",
+    "approvedOn": "goedgekeurd op {date}",
+    "submittedOn": "ingediend op {date}",
+    "startedOn": "begonnen op {date}",
+    "colWhen": "Wanneer",
+    "colStatus": "Status"
   }
 }

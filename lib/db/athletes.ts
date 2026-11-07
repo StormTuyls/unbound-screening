@@ -201,3 +201,48 @@ export async function listAthletesForScreening(
     lastMonth: Number(counts?.vorige_maand ?? 0),
   };
 }
+
+/**
+ * De intakes van één atleet, voor het dossier in deze app.
+ *
+ * Leest public.intakes over dezelfde databank; intake_server heeft daar select
+ * op. Bewust alleen de omslag: status, de datums en wie goedkeurde. Wat er IN
+ * een intake staat blijft aan de intakekant, want daar hoort het thuis en daar
+ * staat het al.
+ *
+ * Gesorteerd op de datum die bij de status hoort, zodat een goedgekeurde
+ * intake van gisteren voorgaat op een concept van vorig jaar.
+ */
+export interface AthleteIntake {
+  id: string;
+  status: IntakeStatus | null;
+  at: string | null;
+  startedAt: string | null;
+  submittedAt: string | null;
+  approvedAt: string | null;
+}
+
+const dag = (raw: unknown): string | null =>
+  raw === null || raw === undefined
+    ? null
+    : new Date(raw as string).toISOString().slice(0, 10);
+
+export async function listIntakesForAthlete(athleteId: string): Promise<AthleteIntake[]> {
+  const rows = await query<Record<string, unknown>>(
+    `select id, status, started_at, submitted_at, approved_at,
+            coalesce(approved_at, submitted_at, started_at) as at
+       from public.intakes
+      where athlete_id = $1
+      order by coalesce(approved_at, submitted_at, started_at) desc`,
+    [athleteId],
+  );
+
+  return rows.map((row) => ({
+    id: row.id as string,
+    status: intakeStatus(row.status),
+    at: dag(row.at),
+    startedAt: dag(row.started_at),
+    submittedAt: dag(row.submitted_at),
+    approvedAt: dag(row.approved_at),
+  }));
+}

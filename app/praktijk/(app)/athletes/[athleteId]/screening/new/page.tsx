@@ -72,10 +72,11 @@ export default async function NewScreeningPage({
 
   return (
     <>
-      {/* Wees naar het verloop van deze atleet, niet naar /praktijk/athletes/<id>:
-          die route bestaat niet en heeft nooit bestaan. */}
+      {/* Naar het dossier van deze atleet. Dat wees eerder naar het verloop,
+          omdat /praktijk/athletes/<id> toen niet bestond; sinds het dossier er
+          is hoort "terug" daarheen te gaan en niet een laag dieper. */}
       <Link
-        href={`/praktijk/athletes/${athleteId}/screening`}
+        href={`/praktijk/athletes/${athleteId}`}
         className="inline-flex min-h-11 items-center text-xs text-ink-muted underline"
       >
         {athlete.name ?? t("title")}

@@ -91,7 +91,7 @@ export default async function ScreeningSessionPage({
   return (
     <>
       <Link
-        href={`/praktijk/athletes/${session.athleteId}/screening`}
+        href={`/praktijk/athletes/${session.athleteId}`}
         className="inline-flex min-h-11 items-center text-xs text-ink-muted underline"
       >
         {session.athleteName ?? t("title")}
