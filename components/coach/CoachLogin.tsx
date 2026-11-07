@@ -74,7 +74,9 @@ export function CoachLogin({ next }: { next: string | null }) {
         className="mt-0"
       >
         <label className="block">
-          <span className="text-label uppercase text-ink-faint">{t("workEmail")}</span>
+          {/* Niet "werk-e-mail": sinds een atleet hier ook inlogt is dit niet
+              langer alleen een personeelsscherm. */}
+          <span className="text-label uppercase text-ink-muted">{t("email")}</span>
           <input
             value={email}
             onChange={(event) => setEmail(event.target.value)}
@@ -125,24 +127,23 @@ export function CoachLogin({ next }: { next: string | null }) {
         {tPassword("forgotLink")}
       </Link>
 
-      {/* De andere voordeur. Er zijn twee loginschermen en niets wees naar het
-          andere, dus wie op de verkeerde belandde kwam er alleen uit door de URL
-          te raden.
+      {/* Voor wie hier nog geen account heeft. Een atleet MET een account
+          meldt zich gewoon op dit formulier aan; de voordeur op / brengt hem
+          daarna bij zijn metingen. Deze link is er dus niet meer om de
+          verkeerde bezoeker weg te sturen, maar om een nieuwe te laten
+          beginnen waar een dossier begint.
 
-          /start bestaat alleen in de intake-app. Dit bestand staat in beide
-          repo's en is daar byte-identiek; in de screeningapp wees de link op
-          een 404. Vandaar het adres uit de omgeving: daar staat het, hier
-          niet, en de uitdrukking blijft in beide repo's dezelfde. */}
-      <Link
-        href={
-          process.env.NEXT_PUBLIC_INTAKE_URL
-            ? `${process.env.NEXT_PUBLIC_INTAKE_URL}/start`
-            : "/start"
-        }
-        className="mt-2 flex min-h-11 items-center justify-center text-xs text-ink-faint underline-offset-2 hover:underline"
-      >
-        {t("toAthlete")}
-      </Link>
+          Alleen met een adres. /start bestaat niet in deze app, en de
+          terugval erop stuurde iemand naar een 404: een link die nergens heen
+          gaat is erger dan geen link. */}
+      {process.env.NEXT_PUBLIC_INTAKE_URL && (
+        <a
+          href={`${process.env.NEXT_PUBLIC_INTAKE_URL}/start`}
+          className="mt-2 flex min-h-11 items-center justify-center text-xs text-ink-muted underline-offset-2 hover:underline"
+        >
+          {t("toAthlete")}
+        </a>
+      )}
     </AuthShell>
   );
 }

@@ -310,10 +310,10 @@
     "footer": "AVG-conform · Automatisch afmelden · Privacy",
     "signIn": "Aanmelden",
     "signingIn": "Aanmelden",
-    "coachIntro": "Meld je aan om intakes van atleten na te kijken.",
+    "coachIntro": "Meld je aan met je account van de praktijk. Waar je uitkomt hangt af van wie je bent.",
     "coachFooter": "Accounts worden door de praktijk aangemaakt. Vraag een beheerder om je wachtwoord opnieuw in te stellen als je niet binnen komt.",
     "toCoach": "Ben je behandelaar? Meld je hier aan",
-    "toAthlete": "Ben je atleet? Ga naar je eigen intake"
+    "toAthlete": "Ben je nieuw? Begin bij je intake"
   },
   "athleteReport": {
     "title": "Intakerapport",
