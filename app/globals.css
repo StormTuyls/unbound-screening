@@ -17,89 +17,111 @@
  * OS-voorkeur.
  */
 @theme {
-  /* Teal uit het ontwerp. 600 is de knop- en bubbelkleur. */
-  --color-brand-50: #eff9f7;
-  --color-brand-100: #d3efeb;
-  --color-brand-200: #a8dfd8;
-  --color-brand-500: #12a594;
-  --color-brand-600: #0e9384;
-  --color-brand-700: #0b766b;
-  --color-brand-800: #095c53;
+  /**
+   * Wit papier, grafiet, en kobalt als enige accent.
+   *
+   * De warme reeks uit de performancerapporten is eruit: crèmepapier met goud
+   * en bosgroen gaf een rapport dat eerder oud dan klinisch leest. Grafiet
+   * draagt nu de structuur (koppen, lijnen, de besluitband) en kobalt komt
+   * alleen waar iets actief of aanklikbaar is. Alles hieronder is op WIT
+   * gemeten, niet op crème; dat verschuift elke contrastwaarde.
+   */
 
-  /* Ondergrond van de berichtenlijst, kaarten daarop, en de haarlijn. */
-  --color-canvas: #f4f5f7;
-  /* Alleen zichtbaar vanaf lg: het vlak waar de app als kaart op ligt. Een tint
-     donkerder dan canvas, want anders valt de kaartrand weg tegen de pagina en
-     is het verschil tussen "kaart" en "kolom met wit ernaast" alleen de
-     schaduw. */
-  --color-backdrop: #e7e9ed;
+  /* Kobalt. Het accent: de lijn onder een paginakop, de actieve tab, de knop
+     waar je op drukt. Nergens als vlak over een hele alinea. */
+  --color-brand-200: #a8bdf0;
+  --color-brand-500: #2f5fd0;
+  --color-brand-600: #2f5fd0;
+  /* 6,9:1 op wit. brand-600 haalt 5,7:1 en mag dus ook onder kleine tekst,
+     maar knoptekst staat omgekeerd en wint bij een tint donkerder. */
+  --color-brand-700: #2a53b8;
+  /* Alleen de hover van brand-700; donkerder, anders gaat een knop bij
+     aanwijzen oplichten in plaats van indrukken. */
+  --color-brand-800: #24478f;
+
+  /* Papier, en twee tinten eronder voor kaders en de pagina zelf. */
   --color-surface: #ffffff;
-  --color-hairline: #e8eaee;
-  /* Een tint lichter dan hairline, voor de regels BINNEN een lijst. Zo blijft
-     de rand van een kaart zwaarder dan de scheiding tussen twee rijen erin en
-     valt een blok van dertig metingen in groepen uiteen in plaats van in een
-     grijs raster. */
-  --color-rule: #f0f1f4;
+  --color-canvas: #f4f5f7;
+  --color-backdrop: #eceef2;
+  --color-hairline: #e3e5e9;
+  /* Een halve tint lichter dan hairline, voor de regels BINNEN een lijst. */
+  --color-rule: #edeef1;
 
-  --color-ink: #101828;
-  --color-ink-muted: #667085;
-  /* Dezelfde waarde als ink-muted, en dat is geen vergissing. Faint stond op
-     #98a2b3: ongeveer 2,6:1 op wit, ver onder de 4,5:1 die WCAG AA vraagt, en
-     het is de kleur onder vrijwel alle 10- en 12px-tekst in de app. Boven
-     canvas (#f4f5f7) ligt de grens voor 4,5:1 op een lichtheid van 0,164, en
-     ink-muted zit al op 0,161. Er is dus geen derde, lichtere grijstint die
-     haalbaar is. De naam blijft staan omdat hij op veertig plekken de bedoeling
-     draagt: dit is de stilste tekst op het scherm. Wie hier weer verschil wil,
-     maakt dat met maat of gewicht, niet met lichtere inkt. */
-  --color-ink-faint: #667085;
+  --color-ink: #1a1d21;
+  --color-ink-muted: #5b6270;
+  /* Gelijk aan ink-muted, en dat is geen vergissing. Een derde, lichtere
+     grijstint haalt op wit de 4,5:1 niet, en in deze app draagt juist de
+     10- en 12px-tekst de meeste informatie. Wie hier verschil wil, maakt dat
+     met maat of gewicht, niet met lichtere inkt. */
+  --color-ink-faint: #5b6270;
 
-  /* Statuskleuren. Amber betekent 'kijk hier naar', nooit alleen decoratie. */
-  --color-ok: #0e9384;
-  /* De zachte vulling en de inkt van een 'goed'-pil. ok zelf kan dat niet
-     dragen: #0e9384 haalt 3,8:1 op wit en nog minder op ok-soft, en een pil is
-     10px-tekst. ok-strong op ok-soft haalt 5,4:1. Dezelfde ruil als bij warn
-     en danger, die hun eigen soft-paar al hadden. */
-  --color-ok-soft: #ecfdf3;
-  --color-ok-strong: #067647;
-  --color-warn: #b54708;
-  --color-warn-soft: #fffaeb;
-  --color-danger: #b42318;
-  --color-danger-soft: #fef3f2;
+  /* Statuskleuren. Alle drie boven 5:1 op wit, want ze staan onder
+     percentages van 10px en niet alleen op knoppen. */
+  --color-ok: #157a43;
+  --color-ok-soft: #e8f5ec;
+  --color-ok-strong: #116638;
+  --color-warn: #8a5a0b;
+  --color-warn-soft: #fbf1dd;
+  --color-danger: #b3261e;
+  --color-danger-soft: #fceceb;
 
-  /* Aparte kleur voor 'citaat niet teruggevonden'. Zie ConfidenceChip: die
-     staat bewust niet in hetzelfde teal als een geverifieerde waarde. */
-  /* Twee reekskleuren voor een verlooplijn: links en rechts.
-     Gevalideerd op lichtheid, chroma, CVD-scheiding (deutan ΔE 17,6) en
-     contrast tegen het vlak. Niet op het oog gekozen; zie de reekslegenda,
-     want kleur mag nooit het enige onderscheid zijn. */
-  --color-series-1: #0e9384;
-  --color-series-2: #7f56d9;
+  /* De vlakken in de bandfiguur. De -soft tinten hierboven staan achter
+     gekleurde tekst en mogen daarom bijna wit zijn; een figuur draagt zijn
+     betekenis in het vlak zelf en verdwijnt bij die lichtheid.
 
-  --color-unverified: #475467;
-  --color-unverified-soft: #f2f4f7;
+     Twee tinten en geen drie. De bovenste band was #d9ebe0, en die haalde
+     1,21:1 tegen wit en lag maar 0,051 in lichtheid van het goud af, waar 0,06
+     nodig is om twee vlakken uit elkaar te houden. "Op niveau" is nu papier:
+     het verschil tussen deze twee wordt daarmee 0,082 en er gaat een kleur
+     inkt af. Hoe donkerder, hoe slechter, dus de volgorde klopt ook in
+     grijswaarden en met kleurenblindheid. */
+  --color-danger-band: #e9a89f;
+  --color-warn-band: #efd28c;
 
-  /* Het donkere inlogscherm uit het ontwerp. Eigen tokens en geen dark-variant
-     van de rest: dit scherm is altijd donker, ongeacht de OS-voorkeur, want dat
-     is een ontwerpkeuze en geen systeeminstelling. */
-  --color-night: #0d1117;
-  --color-night-raised: #161b22;
-  --color-night-line: #262c36;
-  --color-night-ink: #e6edf3;
-  --color-night-muted: #8b949e;
+  /* Twee reekskleuren voor links en rechts: kobalt tegen grafiet. Ver genoeg
+     uit elkaar in lichtheid om ook op een zwart-witafdruk en met
+     kleurenblindheid te scheiden. */
+  --color-series-1: #2f5fd0;
+  --color-series-2: #1a1d21;
 
-  --radius-bubble: 1.25rem;
-  --radius-card: 1rem;
-  --radius-chip: 9999px;
+  --color-unverified: #5b6270;
+  --color-unverified-soft: #f4f5f7;
 
-  /* Kleine uppercase sectielabels. De letterspacing hoort bij de maat, niet bij
-     de plek waar het label toevallig staat, dus zit hij in de token. */
+  /* De donkere vlakken. In deze app is dat alleen de besluitband in het
+     rapport (night-ink erop); de rest van de reeks staat er omdat de intake
+     dezelfde tokens gebruikt voor zijn donkere schermen en de twee apps hier
+     niet uit elkaar horen te lopen. Dezelfde grafiettoon als de inkt, een
+     paar tinten dieper. */
+  --color-night: #111318;
+  --color-night-raised: #1a1d23;
+  --color-night-line: #2b303a;
+  --color-night-ink: #f2f4f8;
+  --color-night-muted: #a4acbb;
+
+  --font-sans: var(--ff-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--ff-display), var(--ff-sans), ui-sans-serif, sans-serif;
+  --font-mono: var(--ff-mono), ui-monospace, "SFMono-Regular", monospace;
+
+  /* Vierkanter dan voorheen. Het rapport kent geen afgeronde kaarten; de
+     structuur komt van lijnen en vlakken, niet van hoeken. */
+  --radius-bubble: 0.75rem;
+  --radius-card: 0.25rem;
+  /* Geen ronde pil meer. De kaft, de kaarten en de knoppen hebben de
+     vierkante hoek uit het performancerapport; een volronde chip ernaast
+     bleef als enige over uit de vorige stijl. */
+  --radius-chip: 0.25rem;
+
+  /* Kleine uppercase sectielabels. De letterspacing hoort bij de maat, niet
+     bij de plek waar het label staat, dus zit hij in de token. */
   --text-label: 0.6875rem;
   --text-label--line-height: 1rem;
   --text-label--letter-spacing: 0.08em;
   --text-label--font-weight: 600;
 
-  --shadow-bubble: 0 1px 2px rgb(16 24 40 / 0.06);
-  --shadow-card: 0 1px 3px rgb(16 24 40 / 0.08);
+  /* Geen schaduwen meer. Het rapport heeft er geen en de app hoort er niet
+     anders uit te zien; diepte komt van de ondergrond, niet van een waas. */
+  --shadow-bubble: none;
+  --shadow-card: none;
 }
 
 /**
@@ -114,6 +136,16 @@
 body {
   background: var(--color-canvas);
   color: var(--color-ink);
+  font-family: var(--font-sans);
+}
+
+/* Koppen in de smalle snede. Eén regel in plaats van font-display op vijftig
+   plekken; een h1 of h2 is per definitie een kop. */
+h1,
+h2,
+h3 {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
 }
 
 /* De voet van een onderdeel. Op het scherm scheidt hij de onderdelen, op

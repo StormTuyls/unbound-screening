@@ -21,12 +21,20 @@ import type { SnapshotBand } from "@/lib/report/screeningSnapshot";
  * alleen de plaats, nooit de enige informatie. Dat is ook de reden dat de
  * zones in lichtheid verschillen en niet alleen in kleurtoon: op een
  * zwart-witafdruk en met kleurenblindheid blijft de volgorde zichtbaar.
+ *
+ * De hoogste band krijgt geen vlak. Zie de opmerking bij de bandtinten in
+ * globals.css: met drie tinten lagen de bovenste twee te dicht op elkaar om
+ * uit elkaar te houden, en de lichtste was tegen wit zo goed als onzichtbaar.
+ * Zalm en goud liggen voor een normaal kleurenoog nog altijd dichter bij
+ * elkaar dan je zou willen; dat kan hier omdat er drie andere signalen naast
+ * staan: het verschil in lichtheid, de inktstreep op elke drempel, en het
+ * bandwoord dat voluit naast het getal staat. Haal die weg en de kleur is fout.
  */
 
 const W = 200;
 const H = 24;
 /** Ruimte links voor de L/R-letters, buiten de schaal. */
-const GUTTER = 11;
+const GUTTER = 14;
 
 export interface StripMarker {
   value: number;
@@ -46,9 +54,10 @@ export interface StripMarker {
 function zoneFill(score: number | null, max: number): string {
   if (score === null || max <= 0) return "var(--color-canvas)";
   const ratio = score / max;
-  if (ratio <= 0) return "var(--color-danger-soft)";
-  if (ratio >= 0.66) return "var(--color-ok-soft)";
-  return "var(--color-warn-soft)";
+  if (ratio <= 0) return "var(--color-danger-band)";
+  // Geen vlak: de hoogste band is het papier zelf.
+  if (ratio >= 0.66) return "none";
+  return "var(--color-warn-band)";
 }
 
 /**
@@ -111,7 +120,6 @@ export function BandStrip({
             (typeof m.previous === "number" ? ` (${m.previous})` : ""),
         )
         .join(", ")}
-      preserveAspectRatio="none"
     >
       {bands.map((b, i) => {
         const from = x(b.gte ?? lo);
@@ -171,7 +179,7 @@ export function BandStrip({
               <text
                 x={0}
                 y={y + 3}
-                fontSize={8}
+                fontSize={9}
                 fill="var(--color-ink-muted)"
                 className="tabular-nums"
               >
@@ -188,28 +196,21 @@ export function BandStrip({
                   stroke="var(--color-ink-muted)"
                   strokeWidth={0.8}
                 />
-                <line
-                  x1={px}
-                  x2={px}
-                  y1={y - 3.5}
-                  y2={y + 3.5}
+                <circle
+                  cx={px}
+                  cy={y}
+                  r={2.4}
+                  fill="var(--color-surface)"
                   stroke="var(--color-ink-muted)"
-                  strokeWidth={1.2}
+                  strokeWidth={1}
                 />
               </>
             )}
-            {/* Staafjes en geen stippen. De strip rekt met zijn kolom mee
-                (preserveAspectRatio="none"), en een cirkel wordt dan een
-                zichtbaar platte ellips terwijl een rechthoek alleen iets
-                smaller wordt. */}
-            <rect
-              x={cx - 1.3}
-              y={y - 4.5}
-              width={2.6}
-              height={9}
-              rx={1}
-              fill="var(--color-ink)"
-            />
+            {/* De huidige meting, en het zwaarste wat er in de tekening
+                staat. Een staafje van een haar breed ging op in de
+                bandgrenzen; een dichte stip is op het eerste gezicht de
+                meting en niets anders. */}
+            <circle cx={cx} cy={y} r={3} fill="var(--color-ink)" />
           </g>
         );
       })}

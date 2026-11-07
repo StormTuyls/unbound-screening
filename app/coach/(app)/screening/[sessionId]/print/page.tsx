@@ -7,6 +7,7 @@ import { BandStrip, type StripMarker } from "@/components/report/BandStrip";
 import { AutoPrint } from "@/components/review/AutoPrint";
 import { PRACTICE_NAME } from "@/lib/report/branding";
 import { logAudit } from "@/lib/audit";
+import { unitSuffix } from "@/lib/screening/units";
 
 export async function generateMetadata() {
   const t = await getTranslations("screening");
@@ -18,10 +19,54 @@ export const dynamic = "force-dynamic";
 const BLOCK_ORDER = ["anthropometry", "mobility_ll", "mobility_ul", "core",
                      "movement_ll", "forcedecks", "strength_ul"];
 
-const UNIT_SUFFIX: Record<string, string> = {
-  deg: "°", cm: " cm", n: " N", xbw: "×BW", score: "", percent: "%",
-  hand_lengths: "", mm: " mm", s: " s", kg: " kg",
-};
+/**
+ * De kop van een blad.
+ *
+ * Overgenomen uit de bestaande performancerapporten: een bovenregel die zegt
+ * van wie en van welke praktijk dit blad is, de titel in de smalle snede, een
+ * ondertitel die zegt wat er gemeten is, en rechts de behandelaar achter een
+ * gouden lijn. Daaronder een gouden regel over de hele breedte.
+ *
+ * Staat op ELK blad en niet alleen op de kaft, want de bladen raken los. Dat
+ * is dezelfde reden als de herhalende kopregel bij het printen, maar dan
+ * zichtbaar en op zijn plek in plaats van in de marge.
+ */
+function PageHead({
+  eyebrow,
+  title,
+  subtitle,
+  tester,
+  role,
+}: {
+  eyebrow: string;
+  title: string;
+  subtitle?: string | null;
+  tester?: string | null;
+  role: string;
+}) {
+  return (
+    <header className="mb-5">
+      <div className="flex items-start justify-between gap-6">
+        <div className="min-w-0">
+          <p className="font-mono text-[10px] tracking-[0.12em] text-ink-muted uppercase">
+            {eyebrow}
+          </p>
+          <h2 className="mt-1 font-display text-2xl font-semibold uppercase">{title}</h2>
+          {subtitle && <p className="mt-0.5 text-xs text-ink-muted">{subtitle}</p>}
+        </div>
+        {tester && (
+          <div className="shrink-0 border-r-2 border-brand-600 pr-3 text-right">
+            <p className="font-display text-base font-semibold">{tester}</p>
+            <p className="font-mono text-[10px] tracking-[0.12em] text-brand-700 uppercase">
+              {role}
+            </p>
+          </div>
+        )}
+      </div>
+      <div className="mt-2.5 h-px bg-brand-600" />
+    </header>
+  );
+}
 
 /**
  * De drempels van een regel als tekst.
@@ -68,7 +113,7 @@ function figureInk(score: number | null): string {
  * @page-marge vragen, en dat ondersteunt Chrome niet.
  */
 function ReportFoot({ label }: { label: string }) {
-  return <p className="report-foot">{label}</p>;
+  return <p className="report-foot font-mono tracking-[0.08em]">{label}</p>;
 }
 
 /**
@@ -279,16 +324,34 @@ export default async function ScreeningPrintPage({
         </p>
         <section className="report-page">
           <header className="mb-6">
-            <p className="text-xs text-ink-muted">{PRACTICE_NAME}</p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-tight">
-              {s.athleteName ?? t("title")}
-            </h1>
-            <p className="mt-1 text-sm text-ink-muted">
-              {t("title")} {s.occurredOn}
-              {s.bodyMassKg ? ` · ${s.bodyMassKg} kg` : ""}
-              {s.testerName ? ` · ${t("tester")}: ${s.testerName}` : ""}
-            </p>
-            <p className="mt-0.5 text-xs text-ink-faint">
+            <div className="flex items-start justify-between gap-6">
+              <div className="min-w-0">
+                <p className="font-mono text-[10px] tracking-[0.12em] text-ink-muted uppercase">
+                  {PRACTICE_NAME} · {s.occurredOn}
+                </p>
+                <h1 className="mt-1 font-display text-4xl font-bold uppercase">
+                  {s.athleteName ?? t("title")}
+                </h1>
+                <p className="mt-1 text-sm text-ink-muted">
+                  {[
+                    t("title"),
+                    s.bodyMassKg ? `${s.bodyMassKg} kg` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </div>
+              {s.testerName && (
+                <div className="shrink-0 border-r-2 border-brand-600 pr-3 text-right">
+                  <p className="font-display text-lg font-semibold">{s.testerName}</p>
+                  <p className="font-mono text-[10px] tracking-[0.12em] text-brand-700 uppercase">
+                    {t("tester")}
+                  </p>
+                </div>
+              )}
+            </div>
+            <div className="mt-2.5 h-px bg-brand-600" />
+            <p className="mt-1.5 font-mono text-[10px] text-ink-muted">
               {t("reportVersion", { n: report.version, date: s.generatedAt.slice(0, 10) })}
             </p>
           </header>
@@ -304,7 +367,7 @@ export default async function ScreeningPrintPage({
                 {cover.map((g) => (
                   <div
                     key={g.metricKey}
-                    className="break-inside-avoid rounded-card border border-hairline bg-surface px-3.5 py-3"
+                    className="break-inside-avoid border border-hairline bg-canvas px-3.5 py-3"
                   >
                     <p className="text-label text-ink-muted uppercase">{g.name}</p>
                     <div className="mt-1.5 flex flex-wrap items-baseline gap-x-3">
@@ -321,12 +384,12 @@ export default async function ScreeningPrintPage({
                               </span>
                             )}
                             {r.value!.toFixed(r.decimals)}
-                            {UNIT_SUFFIX[r.unit] ?? ` ${r.unit}`}
+                            {unitSuffix(r.unit)}
                           </p>
                         ))}
                     </div>
                     {g.bands && (
-                      <BandStrip bands={g.bands} markers={g.markers} className="mt-2 h-5 w-full" />
+                      <BandStrip bands={g.bands} markers={g.markers} className="mt-2 w-full" />
                     )}
                     <p className="mt-1.5 text-xs text-ink-muted">
                       {g.sides
@@ -345,11 +408,11 @@ export default async function ScreeningPrintPage({
               apart van de cijfers eromheen. Print zonder achtergronden laat de
               rand en het label staan, dus het blijft leesbaar als een blok. */}
           {s.notes && (
-            <section className="mb-6 flex gap-3.5 break-inside-avoid rounded-card border border-brand-100 bg-brand-50 px-4 py-3.5">
-              <h2 className="shrink-0 pt-0.5 text-label text-brand-700 uppercase">
+            <section className="mb-6 flex gap-4 break-inside-avoid bg-ink px-4 py-3.5 print:[print-color-adjust:exact]">
+              <h2 className="shrink-0 pt-0.5 font-mono text-[10px] tracking-[0.12em] text-brand-200 uppercase">
                 {t("decision")}
               </h2>
-              <p className="text-sm leading-relaxed">{s.notes}</p>
+              <p className="text-sm leading-relaxed text-[var(--color-night-ink)]">{s.notes}</p>
             </section>
           )}
 
@@ -359,9 +422,14 @@ export default async function ScreeningPrintPage({
           ].map(({ key, heading, rows }) =>
             rows.length === 0 ? null : (
               <section key={key} className="mb-6 break-inside-avoid">
-                <h2
-                  className={`mb-1 text-label uppercase ${key === "strength" ? "text-brand-700" : "text-warn"}`}
-                >
+                {/* Een gekleurde bovenlijn per kolom, zoals in de bestaande
+                    rapporten: groen voor wat goed gaat, goud voor wat werk
+                    vraagt. De lijn draagt de kleur en niet de tekst, zodat het
+                    kopje zelf op volle inkt leesbaar blijft. */}
+                <div
+                  className={`h-0.5 ${key === "strength" ? "bg-ok" : "bg-brand-600"}`}
+                />
+                <h2 className="mt-1.5 mb-1 font-mono text-[10px] tracking-[0.12em] uppercase">
                   {heading}
                 </h2>
                 <ol className="text-sm">
@@ -393,67 +461,110 @@ export default async function ScreeningPrintPage({
 
         {ordered.map(([block, rows]) => (
           <section key={block} className="report-page">
-            <h2 className="mb-1 text-sm font-medium">
-              {t(`blocks.${block}` as "blocks.core")}
-            </h2>
-            <ul>
-              {groupByMetric(rows).map((g) => (
-                <li
-                  key={g.metricKey}
-                  className="flex items-start gap-4 border-t border-hairline py-2 break-inside-avoid"
-                >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm">{g.name}</p>
-                    {g.sides.map((row) => (
-                      <p
-                        key={`${row.side}`}
-                        className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-xs"
-                      >
-                        {sideWord(row.side) && (
-                          <span className="w-10 shrink-0 text-ink-muted">{sideWord(row.side)}</span>
-                        )}
-                        <span className="tabular-nums">
+            <PageHead
+              eyebrow={`${PRACTICE_NAME} \u00b7 ${s.athleteName ?? ""}`}
+              title={t(`blocks.${block}` as "blocks.core")}
+              subtitle={s.occurredOn}
+              tester={s.testerName}
+              role={t("tester")}
+            />
+
+            {/* Een tabel en geen lijst. Links en rechts horen twee kolommen te
+                zijn die je verticaal kunt aflezen: zo staan alle linkerwaarden
+                van een blok onder elkaar en zie je een patroon per zijde, niet
+                alleen per test. Zo staat het ook in de rapporten die de
+                praktijk nu zelf maakt. */}
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-hairline text-left font-mono text-[10px] tracking-[0.1em] text-ink-muted uppercase">
+                  <th className="py-1.5 font-medium">{t("test")}</th>
+                  <th className="py-1.5 pl-3 text-right font-medium">{t("left")}</th>
+                  <th className="py-1.5 pl-3 text-right font-medium">{t("right")}</th>
+                  <th className="py-1.5 pl-3 text-right font-medium">{t("asymmetry")}</th>
+                  <th className="w-[200px] py-1.5 pl-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {groupByMetric(rows).map((g) => {
+                  const cell = (side: string) => {
+                    const row = g.sides.find((r) => r.side === side);
+                    if (!row) return null;
+                    const prev = prevOf(g, side);
+                    return (
+                      <>
+                        <span className={`font-mono tabular-nums ${figureInk(row.bandScore)}`}>
                           {row.status === "computed" && row.value !== null
-                            ? `${row.value.toFixed(row.decimals)}${UNIT_SUFFIX[row.unit] ?? ` ${row.unit}`}`
+                            ? `${row.value.toFixed(row.decimals)}${unitSuffix(row.unit)}`
                             : t(`unavailable.${row.unavailableReason ?? "missing_input"}` as "unavailable.missing_input")}
                         </span>
-                        {row.bandStatus && (
-                          <span className="text-ink-muted">{row.bandStatus.replace(/_/g, " ")}</span>
-                        )}
-                        {typeof prevOf(g, row.side) === "number" && (
-                          <span className="text-ink-muted tabular-nums">
-                            {t("was", { value: prevOf(g, row.side)!.toFixed(row.decimals) })}
+                        {(row.bandStatus || typeof prev === "number") && (
+                          <span className="mt-0.5 block text-[10px] text-ink-muted">
+                            {[
+                              row.bandStatus?.replace(/_/g, " "),
+                              typeof prev === "number"
+                                ? t("was", { value: prev.toFixed(row.decimals) })
+                                : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" \u00b7 ")}
                           </span>
                         )}
-                      </p>
-                    ))}
-                    {g.asymmetry?.status === "computed" && g.asymmetry.value !== null && (
-                      <p className="mt-0.5 text-xs text-ink-muted tabular-nums">
-                        {t("asymmetry")} {g.asymmetry.value.toFixed(1)}%
-                        {asymDirection(g.asymmetry) && ` \u00b7 ${t(asymDirection(g.asymmetry)!)}`}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Vaste breedte, ook als er geen strip is: anders springt
-                      de tekstkolom per test van breedte en leest de lijst als
-                      een trap. */}
-                  <div className="w-[190px] shrink-0">
-                    {g.bands && (
-                      <BandStrip bands={g.bands} markers={g.markers} className="h-6 w-full" />
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
+                      </>
+                    );
+                  };
+                  const bilateral = g.sides.length === 1 && g.sides[0].side === "bilateral";
+                  const dir = g.asymmetry ? asymDirection(g.asymmetry) : null;
+                  return (
+                    <tr key={g.metricKey} className="border-b border-rule break-inside-avoid">
+                      <td className="py-1.5 pr-3 align-top">{g.name}</td>
+                      {bilateral ? (
+                        <td className="py-1.5 pl-3 text-right align-top" colSpan={2}>
+                          {cell("bilateral")}
+                        </td>
+                      ) : (
+                        <>
+                          <td className="py-1.5 pl-3 text-right align-top">{cell("left")}</td>
+                          <td className="py-1.5 pl-3 text-right align-top">{cell("right")}</td>
+                        </>
+                      )}
+                      {/* Geen kleur op de asymmetrie. Wanneer een verschil te
+                          groot is, is een klinische drempel, en die hoort in
+                          reference_rules en niet in een renderer. Een grens
+                          die hier hard ingetypt staat is precies wat de
+                          bibliotheek moet voorkomen. */}
+                      <td className="py-1.5 pl-3 text-right align-top font-mono tabular-nums">
+                        {g.asymmetry?.status === "computed" && g.asymmetry.value !== null ? (
+                          <>
+                            {g.asymmetry.value.toFixed(1)}&#8201;%
+                            {dir && (
+                              <span className="ml-1 text-ink-muted">
+                                {sideMark(dir === "lowerLeft" ? "left" : "right")}
+                              </span>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-ink-muted">&#8211;</span>
+                        )}
+                      </td>
+                      <td className="py-1.5 pl-3 align-middle">
+                        {g.bands && (
+                          <BandStrip bands={g.bands} markers={g.markers} className="w-full" />
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
 
             {/* De losse vlaggen bij dit blok, zodat een opmerking naast zijn
                 meting staat en niet drie bladen verderop. Sterktes en
                 ontwikkelpunten staan al op de kaft. */}
             {observations.filter((n) => n.kind === null && n.metricKey && rows.some((r) => r.metricKey === n.metricKey)).map((note) => (
-              <p key={note.id} className="mt-2 text-xs text-ink-muted">
-                {noteLabel(note)}: {note.body}
-                {note.action && ` → ${note.action}`}
+              <p key={note.id} className="mt-2 text-xs">
+                <span className="font-semibold text-brand-700">{noteLabel(note)}.</span>{" "}
+                {note.body}
+                {note.action && ` \u2192 ${note.action}`}
               </p>
             ))}
 
@@ -462,7 +573,13 @@ export default async function ScreeningPrintPage({
         ))}
 
         <section className="report-page">
-          <h2 className="mb-1 text-sm font-medium">{t("legend")}</h2>
+          <PageHead
+            eyebrow={`${PRACTICE_NAME} \u00b7 ${s.athleteName ?? ""}`}
+            title={t("legend")}
+            subtitle={s.occurredOn}
+            tester={s.testerName}
+            role={t("tester")}
+          />
 
           {/* De sleutel bij de strips. Een figuur zonder legende in een
               medisch rapport dwingt de lezer te raden wat een open stip
@@ -472,7 +589,7 @@ export default async function ScreeningPrintPage({
           )}
 
           {s.unclassified > 0 && (
-            <p className="mb-4 text-xs text-ink-faint">
+            <p className="mb-4 max-w-prose text-xs text-ink-faint">
               {t("unclassified", { count: s.unclassified })}
             </p>
           )}

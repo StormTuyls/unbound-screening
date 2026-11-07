@@ -42,6 +42,31 @@ export const UNITS = [
 export type Unit = (typeof UNITS)[number];
 
 /**
+ * Hoe een eenheid achter een getal staat. Alleen opmaak.
+ *
+ * De spatie zit in de waarde en niet in de opmaak, want een graadteken plakt
+ * aan het getal en "cm" niet. Een eenheid die hier niet staat krijgt een
+ * spatie en zijn sleutel; dat leest lelijk en is precies de bedoeling, want
+ * dan ontbreekt hij.
+ */
+const SUFFIX: Partial<Record<Unit, string>> = {
+  deg: "°",
+  cm: " cm",
+  mm: " mm",
+  n: " N",
+  xbw: "×BW",
+  s: " s",
+  kg: " kg",
+  percent: "%",
+  score: "",
+  hand_lengths: "",
+};
+
+export function unitSuffix(unit: string): string {
+  return SUFFIX[unit as Unit] ?? ` ${unit}`;
+}
+
+/**
  * Standaardzwaartekracht, CODATA. Hardgecodeerd en niet afgerond naar 9,81:
  * spec §8 schrijft de waarde voluit (`mass × 9.80665`), en een afwijkende
  * constante levert een stille afwijking van 0,07% op elke xBW-waarde.

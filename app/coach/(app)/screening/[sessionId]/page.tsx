@@ -2,9 +2,10 @@ import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { checkCoach, isUuid } from "@/lib/review/access";
-import { getSession, type ResultBand } from "@/lib/db/screening";
+import { getSession } from "@/lib/db/screening";
 import { listNotes } from "@/lib/db/screeningNotes";
 import { ScreeningNotes } from "@/components/coach/ScreeningNotes";
+import { ScreeningResults, type ResultRow } from "@/components/coach/ScreeningResults";
 
 export async function generateMetadata() {
   const t = await getTranslations("titles");
@@ -18,42 +19,18 @@ export const dynamic = "force-dynamic";
  *
  * Spec §11 in drie regels: het getal eerst en de duiding daarna, kleur als
  * tweede signaal en nooit als enige, en bij een verhouding de teller en de
- * noemer ernaast. Vandaar dat de band een pil achter de waarde is en niet een
- * kleur op de waarde zelf.
+ * noemer ernaast. Dat gebeurt nu in ScreeningResults, dat dezelfde tabel
+ * tekent als de afdruk: een regel per test, links en rechts als kolommen, en
+ * de strip die laat zien waar de meting op haar eigen schaal ligt.
  *
  * Onderaan staat waar de banden vandaan komen (FR-08). Een drempel zonder bron
  * hoort niet in een medisch dossier, en bij de tests die NIET classificeren is
  * juist die noot het antwoord op "waarom staat hier geen band".
  */
 
-/**
- * De band als kleur, met het woord er altijd naast.
- *
- * Naar de plek op de schaal van DEZE regel, niet naar de score zelf. Een score
- * van 1 is bij anthropometry.navicular_drop (twee banden: attention 0, normal
- * 1) de beste uitkomst en bij een krachtregel (vier banden, poor tot
- * excellent) de op een na slechtste. Door te delen door de hoogste score in
- * dezelfde bandenlijst klopt het voor allebei.
- *
- * Eerder stond hier dat dit niet kon zonder de banden mee te nemen, en dat
- * klopte: ze zaten niet in derived_results. Sinds snapshotversie 4 reizen ze
- * mee, en dat is ook wat de strips in het rapport tekenen.
- */
-function bandStyle(score: number | null, bands: ResultBand[] | null): string {
-  if (score === null) return "bg-canvas text-ink-muted";
-  const max = Math.max(0, ...(bands ?? []).map((b) => b.score ?? 0));
-  // Zonder banden valt er niets te normaliseren; dan draagt het woord alleen.
-  if (max <= 0) return "bg-canvas text-ink-muted";
-  const ratio = score / max;
-  if (ratio <= 0) return "bg-danger-soft text-danger";
-  if (ratio >= 0.66) return "bg-ok-soft text-ok-strong";
-  return "bg-warn-soft text-warn";
-}
-
-const UNIT_SUFFIX: Record<string, string> = {
-  deg: "°", cm: " cm", n: " N", xbw: "×BW", score: "", percent: "%",
-  hand_lengths: "", mm: " mm", s: " s", kg: " kg",
-};
+/** Zelfde volgorde als het invoerscherm: meten, bewegen, kracht. */
+const BLOCK_ORDER = ["anthropometry", "mobility_ll", "mobility_ul", "core",
+                     "movement_ll", "forcedecks", "strength_ul"] as const;
 
 export default async function ScreeningSessionPage({
   params,
@@ -80,32 +57,9 @@ export default async function ScreeningSessionPage({
   const name = (row: { testLabelNl: string; testLabelEn: string }) =>
     locale === "nl" ? row.testLabelNl : row.testLabelEn;
 
-  /**
-   * De vorige waarde hoort bij de meting, niet op een regel eronder.
-   *
-   * Een delta is geen aparte uitslag maar een annotatie: "9,5 cm, was 8,0". Als
-   * eigen rij verdubbelt hij de lijst zonder iets toe te voegen, en in de
-   * lokale databank is dat 247 van de 679 rijen. Daarom hier uit de lijst
-   * gelicht en verderop achter de absolute waarde gezet, op metriek en zijde.
-   */
-  const deltas = new Map<string, (typeof session.results)[number]>();
-  for (const row of session.results) {
-    if (row.kind === "delta") deltas.set(`${row.metricKey}|${row.side}`, row);
-  }
-
-  const blocks = new Map<string, typeof session.results>();
-  for (const row of session.results) {
-    if (row.kind === "delta") continue;
-    const list = blocks.get(row.block) ?? [];
-    list.push(row);
-    blocks.set(row.block, list);
-  }
-  // Zelfde volgorde als het invoerscherm: meten, bewegen, kracht.
-  const order = ["anthropometry", "mobility_ll", "mobility_ul", "core",
-                 "movement_ll", "forcedecks", "strength_ul"];
-  const ordered = [...blocks].sort(
-    (a, b) => (order.indexOf(a[0]) + 1 || 99) - (order.indexOf(b[0]) + 1 || 99),
-  );
+  // De naam hier opgelost en niet in de component: die is een client en hoeft
+  // de locale niet te kennen om een tabel te tekenen.
+  const rows: ResultRow[] = session.results.map((row) => ({ ...row, label: name(row) }));
 
   // Ook de genormaliseerde rijen: die kunnen een band dragen, dus een band die
   // ontbreekt zegt daar hetzelfde als bij een gemeten waarde. Asymmetrie en
@@ -117,12 +71,14 @@ export default async function ScreeningSessionPage({
       r.bandStatus === null,
   ).length;
 
+  type Row = (typeof session.results)[number];
+
   // Een regel per test, niet per rij: links en rechts delen hun referentieregel.
   //
   // Of hij classificeert volgt uit de ABSOLUTE rijen, niet uit de laatste rij
   // die toevallig in de map landt. Een delta- of asymmetrierij heeft per
   // ontwerp geen band, dus die zou elke test als "classificeert niet" tonen,
-  // ook de tests waar hierboven gewoon een band bij staat.
+  // ook de tests waar gewoon een band bij staat.
   const rules = new Map<string, { row: Row; classifies: boolean }>();
   for (const row of session.results) {
     if (!row.ruleNote && !row.ruleSource) continue;
@@ -130,15 +86,6 @@ export default async function ScreeningSessionPage({
     const entry = rules.get(key);
     const classifies = (entry?.classifies ?? false) || row.bandStatus !== null;
     rules.set(key, { row: entry?.row ?? row, classifies });
-  }
-
-  type Row = (typeof session.results)[number];
-
-  function label(row: Row): string {
-    if (row.kind === "asymmetry") return t("asymmetry");
-    const side = row.side === "left" ? t("left") : row.side === "right" ? t("right") : "";
-    if (row.kind === "delta") return side ? `${t("vsPrevious")}, ${side}` : t("vsPrevious");
-    return side;
   }
 
   return (
@@ -157,9 +104,22 @@ export default async function ScreeningSessionPage({
         <p className="mt-1 text-sm text-ink-muted">
           {session.bodyMassKg ? `${session.bodyMassKg} kg` : t("bodyMassMissing")}
           {session.testerName ? ` · ${t("tester")}: ${session.testerName}` : ""}
-          {session.notes ? ` · ${session.notes}` : ""}
         </p>
       </header>
+
+      {/* Het besluit is het enige op deze pagina dat de behandelaar zelf
+          schreef, en het draagt de hele sessie. Het stond tussen het gewicht
+          en de testernaam op één regel; daar las het als nog een veld. */}
+      {session.notes && (
+        <section className="mb-6 flex gap-4 bg-ink px-4 py-3.5">
+          <h2 className="shrink-0 pt-0.5 text-label text-brand-200 uppercase">
+            {t("decision")}
+          </h2>
+          <p className="text-sm leading-relaxed text-[var(--color-night-ink)]">
+            {session.notes}
+          </p>
+        </section>
+      )}
 
       {/* Exporteren loopt altijd over een bevroren versie, nooit over de stand
           van nu: de drempels kunnen sindsdien bijgesteld zijn. */}
@@ -184,115 +144,7 @@ export default async function ScreeningSessionPage({
         </a>
       </div>
 
-      {ordered.map(([block, rows]) => (
-        <section key={block} className="mb-8">
-          <h2 className="border-b border-hairline pb-2 text-sm font-semibold">
-            {t(`blocks.${block}` as "blocks.core")}
-          </h2>
-          {/* divide-rule en niet divide-hairline: de regels binnen een blok
-              horen lichter te zijn dan de lijn die de blokken scheidt. */}
-          <ul className="divide-y divide-rule">
-            {rows.map((row, index) => (
-              <li
-                key={`${row.metricKey}-${row.kind}-${row.side}-${index}`}
-                className="flex items-baseline justify-between gap-4 py-2"
-              >
-                <span className="min-w-0 text-sm">
-                  {name(row)}
-                  <span className="ml-1.5 text-xs text-ink-faint">{label(row)}</span>
-                </span>
-
-                <span className="flex shrink-0 items-baseline gap-2">
-                  {/* Het getal eerst, dan pas de duiding. Spec §11. */}
-                  {row.status === "computed" && row.value !== null ? (
-                    <span className="text-sm tabular-nums">
-                      {row.value.toFixed(
-                        // Een genormaliseerde waarde is een absolute waarde van
-                        // een eigen metriek en heeft dus haar eigen precisie:
-                        // 2,85 xBW op een decimaal is 2,9 en dat is een andere
-                        // band. Alleen een delta en een asymmetrie zijn altijd
-                        // procenten.
-                        row.kind === "absolute" || row.kind === "normalised"
-                          ? row.decimals
-                          : 1,
-                      )}
-                      <span className="text-ink-faint">
-                        {UNIT_SUFFIX[row.unit] ?? ` ${row.unit}`}
-                      </span>
-                    </span>
-                  ) : (
-                    <span className="text-xs text-ink-faint">
-                      {t(
-                        `unavailable.${row.unavailableReason ?? "missing_input"}` as
-                          "unavailable.missing_input",
-                      )}
-                    </span>
-                  )}
-
-                  {/* Teller en noemer naast de uitkomst. Spec §11: een 'goede'
-                      verhouding kan twee slechte absolute waarden verbergen. */}
-                  {row.kind === "asymmetry" && row.inputs && (
-                    <span className="text-xs whitespace-nowrap text-ink-faint tabular-nums">
-                      L {row.inputs.left ?? "-"} · R {row.inputs.right ?? "-"}
-                      {typeof row.inputs.left === "number" &&
-                        typeof row.inputs.right === "number" &&
-                        row.inputs.left !== row.inputs.right &&
-                        ` · ${row.inputs.left < row.inputs.right ? t("lowerLeft") : t("lowerRight")}`}
-                    </span>
-                  )}
-
-                  {(() => {
-                    const d = deltas.get(`${row.metricKey}|${row.side}`);
-                    if (!d || row.kind !== "absolute") return null;
-                    return (
-                      // Alleen de vorige waarde, niet ook het verschil in
-                      // procenten. Dat percentage is af te lezen uit deze twee
-                      // getallen, en "0,0 cm  was 0  0,0%" leest als drie
-                      // losse cijfers waarvan er twee niets toevoegen. Zelfde
-                      // aantal decimalen als de meting zelf, anders staat er
-                      // "was 0" naast "0,0".
-                      <span className="text-xs whitespace-nowrap text-ink-faint tabular-nums">
-                        {typeof d.inputs?.previous === "number"
-                          ? t("was", { value: d.inputs.previous.toFixed(row.decimals) })
-                          : t("protocolChanged")}
-                      </span>
-                    );
-                  })()}
-
-                  {/* Dezelfde reden als hierboven: zonder de massa erbij is
-                      8,5 N/kg niet na te rekenen, en hij verschuift stil mee
-                      met het gewicht van de atleet. */}
-                  {row.kind === "normalised" && row.inputs && (
-                    <span className="text-xs whitespace-nowrap text-ink-faint tabular-nums">
-                      {row.inputs.source ?? "-"} N · {row.inputs.bodyMassKg ?? "-"} kg
-                    </span>
-                  )}
-
-                  {/* Een lege plek waar een band hoort leest als "nog niet
-                      ingevuld". Een grijze pil zegt wat er aan de hand is: deze
-                      meting is vastgelegd maar niet beoordeeld. Alleen op rijen
-                      die een band KUNNEN dragen; asymmetrie en delta hebben er
-                      per ontwerp geen. */}
-                  {row.bandStatus ? (
-                    <span
-                      className={`rounded px-1.5 py-0.5 text-[10px] whitespace-nowrap ${bandStyle(row.bandScore, row.bands)}`}
-                    >
-                      {row.bandStatus.replace(/_/g, " ")}
-                    </span>
-                  ) : (
-                    (row.kind === "absolute" || row.kind === "normalised") &&
-                    row.status === "computed" && (
-                      <span className="rounded bg-canvas px-1.5 py-0.5 text-[10px] whitespace-nowrap text-ink-muted">
-                        {t("noBand")}
-                      </span>
-                    )
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      ))}
+      <ScreeningResults results={rows} blockOrder={BLOCK_ORDER} />
 
       {/* Wat opvolging vraagt bepaalt de behandelaar. Spec §14. */}
       <ScreeningNotes
@@ -308,7 +160,7 @@ export default async function ScreeningSessionPage({
       />
 
       {unclassified > 0 && (
-        <p className="mb-6 border-t border-hairline pt-3 text-xs text-ink-faint">
+        <p className="mb-6 border-t border-hairline pt-3 text-xs text-ink-muted">
           {t("unclassified", { count: unclassified })}
         </p>
       )}
@@ -320,7 +172,7 @@ export default async function ScreeningSessionPage({
           <summary className="min-h-11 cursor-pointer py-3 text-xs text-ink-muted">
             {t("provenance")} ({rules.size})
           </summary>
-          <p className="mt-2 text-xs text-ink-faint">{t("provenanceIntro")}</p>
+          <p className="mt-2 text-xs text-ink-muted">{t("provenanceIntro")}</p>
           <dl className="mt-2 divide-y divide-hairline border-t border-hairline">
             {[...rules.values()].map(({ row, classifies }) => (
               <div key={name(row)} className="py-2">
@@ -334,19 +186,19 @@ export default async function ScreeningSessionPage({
                     </span>
                   )}
                   {!classifies && (
-                    <span className="rounded bg-canvas px-1.5 py-0.5 text-[10px] text-ink-muted">
+                    <span className="rounded bg-canvas px-1.5 py-0.5 text-[11px] text-ink-muted">
                       {t("classificationOff")}
                     </span>
                   )}
                   {!row.protocolConfirmed && (
-                    <span className="text-ink-faint">· {t("protocolNotFixed")}</span>
+                    <span className="text-ink-muted">· {t("protocolNotFixed")}</span>
                   )}
                 </dt>
                 {row.ruleNote && (
-                  <dd className="mt-0.5 text-xs text-ink-faint">{row.ruleNote}</dd>
+                  <dd className="mt-0.5 text-xs text-ink-muted">{row.ruleNote}</dd>
                 )}
                 {row.ruleSource && (
-                  <dd className="mt-0.5 text-xs text-ink-faint">{row.ruleSource}</dd>
+                  <dd className="mt-0.5 text-xs text-ink-muted">{row.ruleSource}</dd>
                 )}
               </div>
             ))}

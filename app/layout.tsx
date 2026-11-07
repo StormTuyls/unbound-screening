@@ -1,7 +1,42 @@
 import type { Metadata, Viewport } from "next";
+import { IBM_Plex_Mono, Saira_Semi_Condensed, Source_Sans_3 } from "next/font/google";
 import { NextIntlClientProvider } from "next-intl";
 import { getLocale, getTranslations } from "next-intl/server";
 import "./globals.css";
+
+/**
+ * Drie sneden, elk met een taak.
+ *
+ * Overgenomen uit de bestaande performancerapporten van de praktijk; ze stonden
+ * letterlijk in die PDF's. Tot nu toe laadde de app geen enkel lettertype en
+ * stond alles in de systeemstapel, wat betekent dat een rapport er op een Mac
+ * anders uitzag dan op Windows en op papier weer anders.
+ *
+ *   Saira SemiCondensed  koppen. Smal, dus een lange testnaam past op een regel.
+ *   Source Sans 3        lopende tekst en bevindingen.
+ *   IBM Plex Mono        tabelkoppen, cijferkolommen en de voetregel. Een
+ *                        monospace is hier geen stijlkeuze: kolommen met
+ *                        meetwaarden horen onder elkaar uit te lijnen.
+ *
+ * next/font host ze mee in de build, dus er gaat geen verzoek naar Google en
+ * de afdruk hangt niet af van wat de printer toevallig heeft.
+ */
+const saira = Saira_Semi_Condensed({
+  subsets: ["latin"],
+  weight: ["500", "600", "700"],
+  variable: "--ff-display",
+});
+
+const sourceSans = Source_Sans_3({
+  subsets: ["latin"],
+  variable: "--ff-sans",
+});
+
+const plexMono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--ff-mono",
+});
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("app");
@@ -42,7 +77,10 @@ export default async function RootLayout({
   const locale = await getLocale();
 
   return (
-    <html lang={locale}>
+    <html
+      lang={locale}
+      className={`${saira.variable} ${sourceSans.variable} ${plexMono.variable}`}
+    >
       <body className="antialiased">
         <NextIntlClientProvider>{children}</NextIntlClientProvider>
       </body>

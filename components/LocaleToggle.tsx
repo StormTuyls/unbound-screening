@@ -37,7 +37,7 @@ export function LocaleToggle({ className }: { className?: string }) {
 
   return (
     <div
-      className={`inline-flex overflow-hidden rounded-full ring-1 ring-hairline ring-inset ${className ?? ""}`}
+      className={`inline-flex overflow-hidden rounded-chip ring-1 ring-hairline ring-inset ${className ?? ""}`}
       role="group"
       aria-label={t("label")}
     >
