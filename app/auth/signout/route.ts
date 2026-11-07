@@ -17,5 +17,5 @@ export async function POST(request: Request) {
   const supabase = await createServerSupabase();
   await supabase.auth.signOut();
 
-  return NextResponse.redirect(new URL("/coach/login", new URL(request.url).origin));
+  return NextResponse.redirect(new URL("/praktijk/login", new URL(request.url).origin));
 }

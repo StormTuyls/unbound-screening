@@ -33,7 +33,7 @@ export default async function RulePage({
 
   const access = await checkCoach();
   if (access.kind === "anonymous") {
-    redirect(`/coach/login?next=/coach/library/${metricKey}`);
+    redirect(`/praktijk/login?next=/praktijk/library/${metricKey}`);
   }
   if (access.kind !== "coach") notFound();
 
@@ -47,7 +47,7 @@ export default async function RulePage({
 
   return (
     <>
-      <Link href="/coach/library" className="inline-flex min-h-11 items-center text-xs text-ink-muted underline">
+      <Link href="/praktijk/library" className="inline-flex min-h-11 items-center text-xs text-ink-muted underline">
         {t("title")}
       </Link>
 

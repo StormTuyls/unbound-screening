@@ -82,6 +82,31 @@ export interface AthleteWorkRow {
   lastScreening: string | null;
   lastSessionId: string | null;
   openFlags: number;
+  /**
+   * De laatste intake van deze atleet, of null als hij er nog geen heeft.
+   *
+   * Komt uit public.intakes in de intake-app. Dat kan omdat beide apps op
+   * dezelfde databank zitten en intake_server select heeft op die tabel; zie
+   * 20260902110000_grants in athlete-intake. Alleen de status en de datum: wat
+   * er IN die intake staat is medische inhoud en hoort niet op een
+   * overzichtspagina.
+   */
+  intakeStatus: IntakeStatus | null;
+  intakeAt: string | null;
+  /** Om naar het nazicht in de intake-app te kunnen linken. */
+  lastIntakeId: string | null;
+}
+
+/** Spiegelt public.intake_status uit de intake-app. */
+export type IntakeStatus = "draft" | "submitted" | "in_review" | "approved";
+
+const INTAKE_STATUS: readonly string[] = ["draft", "submitted", "in_review", "approved"];
+
+/** Defensief, want dit enum woont in de andere app en kan daar groeien. */
+function intakeStatus(raw: unknown): IntakeStatus | null {
+  return typeof raw === "string" && INTAKE_STATUS.includes(raw)
+    ? (raw as IntakeStatus)
+    : null;
 }
 
 export interface AthleteWorkList {
@@ -97,7 +122,8 @@ export async function listAthletesForScreening(
     query<Record<string, unknown>>(
       `select a.id, a.full_name, a.date_of_birth, a.sport, a.discipline,
               laatste.id as last_session_id, laatste.occurred_on,
-              coalesce(vlaggen.n, 0) as open_flags
+              coalesce(vlaggen.n, 0) as open_flags,
+              intake.id as intake_id, intake.status as intake_status, intake.at as intake_at
          from public.athletes a
          left join lateral (
            select s.id, s.occurred_on
@@ -111,6 +137,18 @@ export async function listAthletesForScreening(
              from medical.screening_notes n
             where n.athlete_id = a.id and n.state = 'open'
          ) vlaggen on true
+         -- De laatste intake, en niet alle. Een werklijst beantwoordt "ligt er
+         -- iets", niet "hoeveel waren er". Gesorteerd op de datum die bij de
+         -- status hoort, zodat een goedgekeurde intake van gisteren voorgaat
+         -- op een concept van vorig jaar.
+         left join lateral (
+           select i.id, i.status,
+                  coalesce(i.approved_at, i.submitted_at, i.started_at) as at
+             from public.intakes i
+            where i.athlete_id = a.id
+            order by coalesce(i.approved_at, i.submitted_at, i.started_at) desc
+            limit 1
+         ) intake on true
         where a.deleted_at is null
         -- Wie het langst wacht staat bovenaan, en wie nog nooit gemeten is
         -- staat daar helemaal boven. Dat is de vraag die dit scherm 's ochtends
@@ -153,8 +191,58 @@ export async function listAthletesForScreening(
       lastScreening: (row.occurred_on as string | null) ?? null,
       lastSessionId: (row.last_session_id as string | null) ?? null,
       openFlags: Number(row.open_flags),
+      intakeStatus: intakeStatus(row.intake_status),
+      lastIntakeId: (row.intake_id as string | null) ?? null,
+      intakeAt: ((row.intake_at as string | Date | null) ?? null) === null
+        ? null
+        : new Date(row.intake_at as string).toISOString().slice(0, 10),
     })),
     thisMonth: Number(counts?.deze_maand ?? 0),
     lastMonth: Number(counts?.vorige_maand ?? 0),
   };
+}
+
+/**
+ * De intakes van één atleet, voor het dossier in deze app.
+ *
+ * Leest public.intakes over dezelfde databank; intake_server heeft daar select
+ * op. Bewust alleen de omslag: status, de datums en wie goedkeurde. Wat er IN
+ * een intake staat blijft aan de intakekant, want daar hoort het thuis en daar
+ * staat het al.
+ *
+ * Gesorteerd op de datum die bij de status hoort, zodat een goedgekeurde
+ * intake van gisteren voorgaat op een concept van vorig jaar.
+ */
+export interface AthleteIntake {
+  id: string;
+  status: IntakeStatus | null;
+  at: string | null;
+  startedAt: string | null;
+  submittedAt: string | null;
+  approvedAt: string | null;
+}
+
+const dag = (raw: unknown): string | null =>
+  raw === null || raw === undefined
+    ? null
+    : new Date(raw as string).toISOString().slice(0, 10);
+
+export async function listIntakesForAthlete(athleteId: string): Promise<AthleteIntake[]> {
+  const rows = await query<Record<string, unknown>>(
+    `select id, status, started_at, submitted_at, approved_at,
+            coalesce(approved_at, submitted_at, started_at) as at
+       from public.intakes
+      where athlete_id = $1
+      order by coalesce(approved_at, submitted_at, started_at) desc`,
+    [athleteId],
+  );
+
+  return rows.map((row) => ({
+    id: row.id as string,
+    status: intakeStatus(row.status),
+    at: dag(row.at),
+    startedAt: dag(row.started_at),
+    submittedAt: dag(row.submitted_at),
+    approvedAt: dag(row.approved_at),
+  }));
 }

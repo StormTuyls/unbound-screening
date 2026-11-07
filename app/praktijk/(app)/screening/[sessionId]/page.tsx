@@ -42,7 +42,7 @@ export default async function ScreeningSessionPage({
 
   const access = await checkCoach();
   if (access.kind === "anonymous") {
-    redirect(`/coach/login?next=/coach/screening/${sessionId}`);
+    redirect(`/praktijk/login?next=/praktijk/screening/${sessionId}`);
   }
   if (access.kind !== "coach") notFound();
 
@@ -91,7 +91,7 @@ export default async function ScreeningSessionPage({
   return (
     <>
       <Link
-        href={`/coach/athletes/${session.athleteId}/screening`}
+        href={`/praktijk/athletes/${session.athleteId}`}
         className="inline-flex min-h-11 items-center text-xs text-ink-muted underline"
       >
         {session.athleteName ?? t("title")}
@@ -125,7 +125,7 @@ export default async function ScreeningSessionPage({
           van nu: de drempels kunnen sindsdien bijgesteld zijn. */}
       <div className="mb-6 flex flex-wrap gap-2 text-xs">
         <a
-          href={`/coach/screening/${session.id}/print`}
+          href={`/praktijk/screening/${session.id}/print`}
           className="inline-flex min-h-11 items-center rounded border border-hairline px-3 transition-colors hover:bg-canvas"
         >
           {t("printReport")}

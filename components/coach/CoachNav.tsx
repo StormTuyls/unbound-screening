@@ -9,8 +9,8 @@ import { LocaleToggle } from "@/components/LocaleToggle";
  *
  * Twee bestemmingen, en dat is minder dan het ontwerp toont. Daar staan er
  * vier: Atleten, Invoeren, Rapport en Bibliotheek. Invoeren en Rapport zijn
- * geen plekken maar handelingen aan EEN atleet: /coach/athletes/<id>/screening/new
- * en /coach/screening/<id>. Zonder die id wijzen ze nergens heen, en de
+ * geen plekken maar handelingen aan EEN atleet: /praktijk/athletes/<id>/screening/new
+ * en /praktijk/screening/<id>. Zonder die id wijzen ze nergens heen, en de
  * artboards zijn het er zelf ook niet over eens waar "Rapport" uitkomt. Ze
  * staan daarom waar ze horen, als knop op de regel van de atleet, precies zoals
  * dezelfde tabel in het ontwerp ze ook al toont.
@@ -41,12 +41,12 @@ export function CoachNav({
 
         <nav className="ml-auto flex flex-wrap items-center gap-1">
           {items.map((item) => {
-            // StartsWith zou /coach op elke coachpagina laten oplichten, want
-            // elk pad begint ermee. Alleen /coach/library mag zijn subpagina's
+            // StartsWith zou /praktijk op elke coachpagina laten oplichten, want
+            // elk pad begint ermee. Alleen /praktijk/library mag zijn subpagina's
             // meenemen.
             const current =
-              item.href === "/coach"
-                ? pathname === "/coach"
+              item.href === "/praktijk"
+                ? pathname === "/praktijk"
                 : pathname === item.href || pathname.startsWith(`${item.href}/`);
 
             return (

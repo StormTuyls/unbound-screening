@@ -5,7 +5,7 @@ import { PRACTICE_NAME } from "@/lib/report/branding";
 /**
  * De schil om de coachschermen.
  *
- * Een routegroep en geen app/coach/layout.tsx, want twee schermen horen er
+ * Een routegroep en geen app/praktijk/layout.tsx, want twee schermen horen er
  * juist niet in te zitten. Het inlogscherm is donker en paginavullend, en een
  * navigatiebalk met "Atleten · Bibliotheek" boven een inlogformulier belooft
  * iemand die nog niet binnen is dingen die hij niet kan openen. Dat scherm
@@ -33,8 +33,8 @@ export default async function CoachLayout({
       <CoachNav
         practice={PRACTICE_NAME}
         items={[
-          { href: "/coach", label: t("athletes") },
-          { href: "/coach/library", label: tl("title") },
+          { href: "/praktijk", label: t("athletes") },
+          { href: "/praktijk/library", label: tl("title") },
         ]}
         intake={
           process.env.NEXT_PUBLIC_INTAKE_URL

@@ -19,17 +19,17 @@ import { createServerSupabase } from "@/lib/supabase/server";
  * zijn eigen pagina te sturen.
  */
 function safeNext(value: string | null): string {
-  if (!value) return "/coach";
+  if (!value) return "/praktijk";
   // Alleen paden binnen deze app. Geen protocol, geen host, geen
   // protocol-relatieve //evil.example.
-  if (!value.startsWith("/") || value.startsWith("//")) return "/coach";
+  if (!value.startsWith("/") || value.startsWith("//")) return "/praktijk";
   return value;
 }
 
 /**
  * Waar iemand heen gaat als de link niet meer werkt.
  *
- * Dit was altijd /coach/login, en dat klopte zolang alleen behandelaars een
+ * Dit was altijd /praktijk/login, en dat klopte zolang alleen behandelaars een
  * link kregen. Met een herstelmail komt ook een atleet hier, en die heeft niets
  * te zoeken op het inlogscherm van de praktijk.
  *
@@ -42,7 +42,7 @@ function safeNext(value: string | null): string {
  */
 function failureTarget(next: string): string {
   if (next.startsWith("/auth/reset")) return "/auth/reset";
-  if (next.startsWith("/coach")) return "/coach/login?error=link";
+  if (next.startsWith("/praktijk")) return "/praktijk/login?error=link";
   return "/start?error=link";
 }
 

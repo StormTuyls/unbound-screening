@@ -243,7 +243,7 @@ try {
   // --- het bevroren rapport -------------------------------------------------
   //
   // Dit is waarom bevriezen bij een screening scherper is dan bij een intake.
-  // De praktijk kan op /coach/library een drempel bijstellen; een afdruk van
+  // De praktijk kan op /praktijk/library een drempel bijstellen; een afdruk van
   // vorig jaar hoort dat niet mee te maken.
 
   const frozenV1 = await ensureFrozenScreening(secondId, actor, null);
