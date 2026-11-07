@@ -47,7 +47,10 @@ export function CoachLogin({ next }: { next: string | null }) {
       // login niet tegenhouden.
       await fetch("/api/locale/sync", { method: "POST" }).catch(() => {});
 
-      router.replace(next && next.startsWith("/") ? next : "/praktijk");
+      // Naar de voordeur en niet naar /praktijk. Sinds een atleet zijn eigen
+      // metingen kan openen, logt hij hier ook in; een vaste bestemming zou
+      // hem op een 404 zetten. / kijkt wie er is en kiest de juiste helft.
+      router.replace(next && next.startsWith("/") ? next : "/");
       router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "something went wrong");

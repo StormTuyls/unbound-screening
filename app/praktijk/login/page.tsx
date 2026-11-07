@@ -20,9 +20,10 @@ export default async function CoachLoginPage({
 }) {
   const { next } = await searchParams;
 
-  // Al ingelogd: doorlopen naar waar hij heen wilde.
+  // Al ingelogd: doorlopen naar waar hij heen wilde, anders naar de voordeur.
+  // Die kijkt wie er is; dit scherm hoeft dat niet nog eens te beslissen.
   const coach = await currentCoach();
-  if (coach) redirect(next && next.startsWith("/") ? next : "/praktijk");
+  if (coach) redirect(next && next.startsWith("/") ? next : "/");
 
   return <CoachLogin next={next ?? null} />;
 }

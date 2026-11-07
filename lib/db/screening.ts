@@ -841,3 +841,88 @@ export async function listSessions(
     measurements: Number(row.measurements),
   }));
 }
+
+/**
+ * De metingen die een atleet van zichzelf mag zien.
+ *
+ * Alleen sessies waar een BEVROREN rapport van bestaat. Dat is de
+ * vrijgavepoort, en hij bestaat al: medical.screening_reports krijgt een rij
+ * zodra de behandelaar het rapport opent of afdrukt. Daarmee vallen "afgerond"
+ * en "zichtbaar voor de atleet" samen zonder een extra kolom die iemand moet
+ * bijhouden en kan vergeten.
+ *
+ * Dat is een benadering en geen besluit. Wil de praktijk een expliciete
+ * vrijgave, dan hoort daar een eigen kolom en een eigen handeling bij; dit is
+ * wat er te bouwen valt zonder iets te verzinnen dat er nog niet is.
+ *
+ * Het filter op athlete_id IS de autorisatie. Geen rolcontrole: een atleet is
+ * een rij en geen rol, en deze query geeft per constructie niets terug wat van
+ * iemand anders is.
+ */
+export interface ReleasedSession {
+  id: string;
+  occurredOn: string;
+  version: number;
+  releasedAt: string;
+  testerName: string | null;
+}
+
+export async function listReleasedSessions(athleteId: string): Promise<ReleasedSession[]> {
+  const rows = await query<Record<string, unknown>>(
+    `select s.id, s.occurred_on, s.tester_name, r.version, r.generated_at
+       from medical.screening_sessions s
+       join lateral (
+         select version, generated_at
+           from medical.screening_reports
+          where session_id = s.id
+          order by version desc
+          limit 1
+       ) r on true
+      where s.athlete_id = $1
+      order by s.occurred_at desc, s.created_at desc`,
+    [athleteId],
+  );
+
+  return rows.map((row) => ({
+    id: row.id as string,
+    occurredOn: row.occurred_on as string,
+    version: Number(row.version),
+    releasedAt: new Date(row.generated_at as string).toISOString().slice(0, 10),
+    testerName: (row.tester_name as string | null) ?? null,
+  }));
+}
+
+/**
+ * Eén vrijgegeven meting van deze atleet, of null.
+ *
+ * Null als de sessie niet bestaat, niet van hem is, of nog geen bevroren
+ * rapport heeft. Alle drie leveren hetzelfde op, en dat is met opzet: een 404
+ * die onderscheid maakt vertelt een bezoeker welke sessies bestaan.
+ */
+export async function getReleasedSession(
+  athleteId: string,
+  sessionId: string,
+): Promise<ReleasedSession | null> {
+  const row = await queryOne<Record<string, unknown>>(
+    `select s.id, s.occurred_on, s.tester_name, r.version, r.generated_at
+       from medical.screening_sessions s
+       join lateral (
+         select version, generated_at
+           from medical.screening_reports
+          where session_id = s.id
+          order by version desc
+          limit 1
+       ) r on true
+      where s.athlete_id = $1 and s.id = $2`,
+    [athleteId, sessionId],
+  );
+  if (!row) return null;
+
+  return {
+    id: row.id as string,
+    occurredOn: row.occurred_on as string,
+    version: Number(row.version),
+    releasedAt: new Date(row.generated_at as string).toISOString().slice(0, 10),
+    testerName: (row.tester_name as string | null) ?? null,
+  };
+}
