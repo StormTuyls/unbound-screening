@@ -26,8 +26,12 @@ export default async function RootPage() {
   const coach = await currentCoach();
   if (coach) redirect("/praktijk");
 
+  // Naar /home en niet naar /metingen. Toen de screening nog los stond was de
+  // metinglijst het enige dat een atleet hier had; sinds de intake mee verhuisd
+  // is, is /home weer zijn thuisscherm, met zijn intakes, wat hij kan
+  // aanleveren, en een ingang naar zijn metingen.
   const athlete = await currentAthlete();
-  if (athlete) redirect("/metingen");
+  if (athlete) redirect("/home");
 
   redirect("/praktijk/login");
 }

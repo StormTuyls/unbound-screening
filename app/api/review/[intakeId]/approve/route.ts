@@ -1,0 +1,182 @@
+import { NextResponse } from "next/server";
+import { apiMessages } from "@/lib/i18n/server";
+import { handleError } from "@/lib/http";
+import { logAudit } from "@/lib/audit";
+import { syncDossier } from "@/lib/db/dossier";
+import { freezeReport } from "@/lib/report/freeze";
+import { isIntakeId, requireCoach } from "@/lib/review/access";
+import { appDb } from "@/lib/supabase/service";
+
+// De goedkeuring maakt een rapportversie aan, en die doet een modelcall voor de
+// samenvatting. Dat past niet in de standaardlimiet.
+export const maxDuration = 300;
+
+/**
+ * De coach keurt de intake goed.
+ *
+ * Dit is het moment waarop het dossier van "wat het systeem eruit haalde" naar
+ * "wat de behandelaar heeft nagekeken" gaat. Drie dingen gebeuren, in deze
+ * volgorde, en de volgorde is inhoudelijk:
+ *
+ * 1. Tegenstrijdigheden moeten weg zijn. Het reviewscherm zegt dat al tegen de
+ *    coach, en indienen dwingt het al af, dus goedkeuren mag niet de plek zijn
+ *    waar die regel stilletjes niet geldt. Oplossen kost één correctie, dus de
+ *    eis is geen last.
+ * 2. `status`, `approved_at` en `approved_by` in EEN statement. De
+ *    check-constraint intakes_approval_complete eist dat alle drie samen
+ *    kloppen; in twee updates faalt de eerste al.
+ * 3. Daarna bevriezen. `intake.status` zit in de gehashte inhoud van het
+ *    snapshot (lib/report/collect.ts), dus na de statuswijziging levert
+ *    freezeReport een echt nieuwe versie op. Andersom zou het een versie
+ *    opleveren met dezelfde hash als de indien-versie, en dan is er geen
+ *    vastlegging van waar de goedkeuring precies op rustte.
+ *
+ * freezeReport en niet ensureFrozenReport: dit verdient een eigen versie, ook al
+ * was het dossier al eens vastgelegd.
+ */
+export async function POST(
+  request: Request,
+  context: { params: Promise<{ intakeId: string }> },
+) {
+  try {
+    const t = await apiMessages();
+    const { intakeId } = await context.params;
+    const coach = await requireCoach();
+
+    if (!isIntakeId(intakeId)) {
+      return NextResponse.json({ error: t("intakeNotFound") }, { status: 404 });
+    }
+
+    const { data: intake } = await appDb()
+      .from("intakes")
+      .select("id, status, submitted_at, locale")
+      .eq("id", intakeId)
+      .maybeSingle();
+
+    if (!intake) {
+      return NextResponse.json({ error: t("intakeNotFound") }, { status: 404 });
+    }
+
+    if (intake.status === "approved") {
+      return NextResponse.json(
+        { error: t("alreadyApproved") },
+        { status: 409 },
+      );
+    }
+
+    // De databank weigert een goedkeuring zonder submitted_at, maar dat komt
+    // eruit als een pg-fout en dus als een generieke 500. Hier is de uitleg nog
+    // te geven.
+    if (!intake.submitted_at) {
+      return NextResponse.json(
+        { error: t("notSubmitted") },
+        { status: 409 },
+      );
+    }
+
+    const state = await syncDossier(intakeId, intake.locale as "nl" | "en");
+    if (state.completeness.conflicts > 0) {
+      return NextResponse.json(
+        {
+          error: t("conflictsOpen", { count: state.completeness.conflicts }),
+          conflicts: state.completeness.conflicts,
+        },
+        { status: 409 },
+      );
+    }
+
+    // Verplichte velden die nooit beantwoord zijn.
+    //
+    // Dit zijn er twee soorten en ze voelen hetzelfde maar zijn het niet: een
+    // veld dat de atleet niet WIST, en een veld dat hij niet wilde zeggen. In
+    // beide gevallen kan de coach het zelf invullen op het reviewscherm, en als
+    // dat niet kan mag hij alsnog goedkeuren.
+    //
+    // Bewust geen harde blokkade. Een verplicht veld dat niemand kan invullen
+    // zou het dossier voorgoed vastzetten, en dat is precies de doodlopende weg
+    // waar de atleet eerder in het gesprek in bleef hangen, een niveau hoger.
+    // Wel een bewuste handeling: de coach moet `acknowledgeGaps` meesturen, en
+    // dat belandt in het auditspoor en in de rapportversie. Stilzwijgend
+    // goedkeuren met gaten kan dus niet, goedkeuren met gaten wel.
+    const missingRequired = state.outOfScope
+      .filter((entry) => entry.reason === "skipped")
+      .map((entry) => ({
+        fieldKey: entry.fieldKey,
+        skipReason: entry.skipReason ?? "unknown",
+        required:
+          state.definitions.find((d) => d.key === entry.fieldKey)?.required ?? false,
+      }))
+      .filter((entry) => entry.required);
+
+    const body = (await request.json().catch(() => ({}))) as {
+      acknowledgeGaps?: boolean;
+    };
+
+    if (missingRequired.length > 0 && body.acknowledgeGaps !== true) {
+      return NextResponse.json(
+        {
+          error: t("requiredGapsOpen", { count: missingRequired.length }),
+          missingRequired,
+        },
+        { status: 409 },
+      );
+    }
+
+    const approvedAt = new Date().toISOString();
+
+    // .eq op de oude status en de rij terugvragen: zonder die twee is een
+    // tweede gelijktijdige goedkeuring stil, en dan staat er een andere coach in
+    // approved_by dan degene die de melding kreeg.
+    const { data: updated, error: updateError } = await appDb()
+      .from("intakes")
+      .update({ status: "approved", approved_at: approvedAt, approved_by: coach.id })
+      .eq("id", intakeId)
+      .eq("status", intake.status)
+      .select("id")
+      .maybeSingle();
+
+    if (updateError) {
+      throw new Error(`goedkeuren mislukt: ${updateError.message}`);
+    }
+
+    if (!updated) {
+      return NextResponse.json(
+        { error: t("changedElsewhere") },
+        { status: 409 },
+      );
+    }
+
+    // De trigger audit_intakes logt deze update ook, maar via de service role is
+    // auth.uid() null, dus die regel zegt actor_kind 'system'. Deze regel zegt
+    // wie. Geen waarden in het detail.
+    await logAudit({
+      action: "update",
+      actorKind: coach.role === "admin" ? "admin" : "coach",
+      actorId: coach.id,
+      entitySchema: "public",
+      entityTable: "intakes",
+      entityId: intakeId,
+      detail: {
+        transition: "approved",
+        // Wat er ontbrak op het moment van aftekenen, en dat de coach dat wist.
+        // Zonder deze regel is achteraf niet te zien of een leeg verplicht veld
+        // over het hoofd gezien is of bewust geaccepteerd.
+        ...(missingRequired.length > 0
+          ? {
+              approvedWithGaps: missingRequired.map((entry) => entry.fieldKey),
+            }
+          : {}),
+      },
+    });
+
+    const report = await freezeReport(intakeId, "approval", coach.id);
+
+    return NextResponse.json({
+      approvedAt,
+      approvedBy: coach.fullName ?? coach.email,
+      reportVersion: report.version,
+    });
+  } catch (error) {
+    return handleError(error);
+  }
+}

@@ -1,39 +1,46 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 import { apiMessages } from "@/lib/i18n/server";
-import { badRequest, handleError } from "@/lib/http";
+import { cookies } from "next/headers";
+import { handleError } from "@/lib/http";
 import { appDb } from "@/lib/supabase/service";
+import { currentAthlete } from "@/lib/intake/athlete";
 import { currentCoach } from "@/lib/review/access";
-import { LOCALE_COOKIE, LOCALE_COOKIE_MAX_AGE, isLocale, type Locale } from "@/lib/i18n/locale";
+import {
+  LOCALE_COOKIE,
+  LOCALE_COOKIE_MAX_AGE,
+  isLocale,
+  type Locale,
+} from "@/lib/i18n/locale";
 
 /**
  * De taalkeuze.
  *
- * Deze route ontbrak. LocaleToggle stond er wel, op het inlogscherm, en poste
- * naar een adres dat in deze repo nooit is meeverhuisd: een 404, zonder
- * melding, dus de knop deed niets en de taal bleef staan. De hele codebase
- * houdt nl en en in pariteit en de enige schakelaar was stuk.
- *
- * Twee schrijfacties, elk met een eigen reden:
+ * Drie schrijfacties, en elke laag heeft een eigen reden:
  *
  * 1. Het cookie. Daar leest i18n/request.ts uit, bij elke render, zonder query.
- * 2. profiles.locale. Nodig omdat een cookie op een ander toestel niet bestaat;
- *    bij inloggen wordt het cookie daaruit gevuld.
+ * 2. De kolom bij de persoon (athletes.locale, profiles.locale). Nodig omdat een
+ *    cookie op een ander toestel niet bestaat; bij inloggen wordt het cookie
+ *    daaruit gevuld.
+ * 3. `intakes.locale` van een DRAFT, en alleen van een draft.
  *
- * In athlete-intake schrijft dezelfde route ook athletes.locale en de locale
- * van een lopende intake. Die derde laag hoort daar: intake.locale zit in de
- * gehashte inhoud van een rapportsnapshot. Hier is geen intake en geen atleet,
- * dus blijven er twee over.
+ * Dat derde punt is de subtiele: `intake.locale` zit in de gehashte inhoud van
+ * een rapportsnapshot (zie lib/report/collect.ts). De taal van een ingediende
+ * intake herschrijven zou dus stil een nieuwe rapportversie minten, met een
+ * modelcall erbij, terwijl er inhoudelijk niets veranderde. Bij een draft bestaat
+ * er nog geen bevroren versie, dus daar valt niets te verschuiven.
  *
- * Geen coach ingelogd is geen fout: het inlogscherm zelf heeft de knop ook, en
- * dan is het cookie het hele antwoord.
+ * Een route handler en geen server action, omdat deze codebase nul server actions
+ * heeft en zeventien route handlers. Consistentie weegt hier zwaarder dan de ene
+ * router.refresh() die je ermee uitspaart.
  */
 export async function POST(request: Request) {
   try {
     const t = await apiMessages();
     const body = (await request.json().catch(() => ({}))) as { locale?: string };
 
-    if (!isLocale(body.locale)) return badRequest(t("unknownLocale"));
+    if (!isLocale(body.locale)) {
+      return NextResponse.json({ error: t("unknownLocale") }, { status: 400 });
+    }
 
     const locale: Locale = body.locale;
     const store = await cookies();
@@ -48,8 +55,24 @@ export async function POST(request: Request) {
       maxAge: LOCALE_COOKIE_MAX_AGE,
     });
 
-    const coach = await currentCoach();
-    if (coach) await appDb().from("profiles").update({ locale }).eq("id", coach.id);
+    const db = appDb();
+    const athlete = await currentAthlete();
+
+    if (athlete) {
+      await db.from("athletes").update({ locale }).eq("id", athlete.athleteId);
+      await db.from("profiles").update({ locale }).eq("id", athlete.userId);
+      // Alleen de lopende intake, zie de toelichting hierboven.
+      await db
+        .from("intakes")
+        .update({ locale })
+        .eq("athlete_id", athlete.athleteId)
+        .eq("status", "draft");
+    } else {
+      const coach = await currentCoach();
+      if (coach) {
+        await db.from("profiles").update({ locale }).eq("id", coach.id);
+      }
+    }
 
     return NextResponse.json({ locale });
   } catch (error) {

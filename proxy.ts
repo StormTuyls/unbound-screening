@@ -52,16 +52,34 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // Alleen waar een sessie iets betekent, en alleen wat deze app heeft. De
-  // lijst kwam bij de splitsing mee uit athlete-intake en bewaakte zeven
-  // routes die hier niet bestaan: /home, /start, /intake, /review en de
-  // bijbehorende api-paden.
+  // Alleen waar een sessie iets betekent. Deze lijst was bij de splitsing
+  // teruggesnoeid tot wat de screening had; sinds de intake hierheen verhuisd
+  // is bestaan /home, /start, /intake, /review en hun api-paden hier wel
+  // degelijk, en zonder vermelding worden ze niet verlengd. Dat is geen
+  // theoretisch gat: een atleet die twintig minuten aan het invullen is, wordt
+  // er halverwege uitgegooid.
   //
-  // /api/coach stond er niet bij en hoort er wel: zonder verlenging krijgt een
-  // coach wiens token tijdens het invullen verloopt een 401 op het bewaren in
-  // plaats van een vernieuwde sessie.
+  // /profile, /consent, /report en /metingen stonden in geen van beide apps in
+  // de lijst. Ze horen er net zo goed in: het zijn schermen achter een login.
   //
   // /api/health blijft er bewust buiten. Die route kent geen gebruiker en moet
-  // goedkoop blijven, want hij wordt gepold.
-  matcher: ["/", "/praktijk/:path*", "/api/coach/:path*", "/api/locale"],
+  // goedkoop blijven, want hij wordt gepold. /api/purge en /api/cron ook niet:
+  // die hangen aan hun eigen geheim en niet aan een sessie.
+  matcher: [
+    "/",
+    "/home/:path*",
+    "/start/:path*",
+    "/consent/:path*",
+    "/intake/:path*",
+    "/profile/:path*",
+    "/report/:path*",
+    "/metingen/:path*",
+    "/praktijk/:path*",
+    "/review/:path*",
+    "/api/athlete/:path*",
+    "/api/coach/:path*",
+    "/api/intake/:path*",
+    "/api/review/:path*",
+    "/api/locale",
+  ],
 };
