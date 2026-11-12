@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import type { AthleteWorkRow } from "@/lib/db/athletes";
+import { InviteAthlete } from "@/components/coach/InviteAthlete";
 import { ageOn } from "@/lib/screening/population";
 import { OVERDUE_DAYS, daysBetween, isOverdue } from "@/lib/screening/overdue";
 
@@ -41,7 +42,6 @@ function waitsForReview(athlete: AthleteWorkRow): boolean {
 export function AthleteWorkList({
   athletes,
   today,
-  intakeUrl,
 }: {
   athletes: AthleteWorkRow[];
   /** Uit de server, zodat de tegels en de regels dezelfde dag tellen. */
@@ -51,12 +51,13 @@ export function AthleteWorkList({
    * toont dat er iets ligt, de andere laat het goedkeuren. Zonder adres geen
    * knop, want een link naar nergens is erger dan geen link.
    */
-  intakeUrl: string | null;
 }) {
   const t = useTranslations("athletes");
   const tf = useTranslations("format");
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
+  const [inviting, setInviting] = useState(false);
+  const tc = useTranslations("coach");
 
   const tests: Record<Filter, (athlete: AthleteWorkRow) => boolean> = useMemo(
     () => ({
@@ -154,7 +155,19 @@ export function AthleteWorkList({
         <p className="text-xs text-ink-muted">
           {t("shownOf", { shown: shown.length, total: athletes.length })}
         </p>
+        <button
+          type="button"
+          onClick={() => setInviting((current) => !current)}
+          aria-expanded={inviting}
+          className="inline-flex min-h-11 shrink-0 items-center rounded-md px-3.5 text-xs ring-1 ring-hairline ring-inset transition-colors hover:bg-canvas"
+        >
+          {inviting ? tc("cancel") : tc("invite")}
+        </button>
       </div>
+
+      {/* Dichtgeklapt tenzij ernaar gevraagd: uitnodigen gebeurt af en toe,
+          zoeken de hele dag. */}
+      {inviting && <InviteAthlete />}
 
       {shown.length === 0 ? (
         <p className="text-sm text-ink-muted">
@@ -270,16 +283,13 @@ export function AthleteWorkList({
                     </td>
 
                     <td className="py-2 text-right whitespace-nowrap">
-                      {/* Nakijken woont in de intake-app. Deze lijst zegt dat
-                          er iets ligt en brengt je erheen; goedkeuren gebeurt
-                          daar, want daar staat de inhoud. */}
-                      {waiting && intakeUrl && athlete.lastIntakeId && (
-                        <a
-                          href={`${intakeUrl}/review/${athlete.lastIntakeId}`}
+                      {waiting && athlete.lastIntakeId && (
+                        <Link
+                          href={`/review/${athlete.lastIntakeId}`}
                           className="mr-2 inline-flex min-h-11 items-center rounded-md bg-brand-700 px-3.5 text-xs text-surface ring-1 ring-brand-700 ring-inset transition-colors hover:bg-brand-800"
                         >
                           {t("reviewIntake")}
-                        </a>
+                        </Link>
                       )}
                       {athlete.lastSessionId && (
                         <Link

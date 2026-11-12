@@ -722,6 +722,7 @@
     "statusSubmitted": "wacht op nakijken",
     "statusDraft": "bezig",
     "purge": {
+      "done": "Verwijderd",
       "heading": "Atleet verwijderen",
       "intro": "Op verzoek van de atleet, of wanneer de bewaartermijn verstreken is. Dit gaat over de persoon en niet over één intake.",
       "prepare": "Verwijderen voorbereiden",

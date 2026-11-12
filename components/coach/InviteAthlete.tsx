@@ -18,7 +18,7 @@ import { useRouter } from "next/navigation";
  * uitnodiging die in een spamfilter hangt terwijl de atleet naast je staat is
  * precies het geval waarin een scherm behulpzaam hoort te zijn.
  */
-export function InviteAthlete({ onDone }: { onDone: () => void }) {
+export function InviteAthlete() {
   const t = useTranslations("coach");
   const router = useRouter();
 
@@ -101,13 +101,6 @@ export function InviteAthlete({ onDone }: { onDone: () => void }) {
             className="rounded-md bg-brand-600 px-3.5 py-2 text-sm font-medium text-white transition-colors hover:bg-brand-700 disabled:opacity-40"
           >
             {busy ? t("working") : t("sendInvitation")}
-          </button>
-          <button
-            type="button"
-            onClick={onDone}
-            className="rounded-md px-3 py-2 text-sm font-medium text-ink-muted ring-1 ring-hairline ring-inset transition-colors hover:bg-canvas"
-          >
-            Close
           </button>
         </div>
       </form>

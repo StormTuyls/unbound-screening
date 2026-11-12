@@ -49,13 +49,7 @@ export default async function CoachHomePage() {
         </p>
       </header>
 
-      <AthleteWorkList
-        athletes={rows}
-        today={today}
-        // Nakijken gebeurt in de intake-app, op een ander domein. Zonder adres
-        // geen knop; de regel blijft dan gewoon staan met zijn intakestatus.
-        intakeUrl={process.env.NEXT_PUBLIC_INTAKE_URL ?? null}
-      />
+      <AthleteWorkList athletes={rows} today={today} />
     </>
   );
 }

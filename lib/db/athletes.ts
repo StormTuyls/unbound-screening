@@ -30,6 +30,7 @@ export interface AthleteProfile {
   discipline: string | null;
   competitionLevel: string | null;
   dateOfBirth: string | null;
+  hasAccount: boolean;
 }
 
 export async function getAthleteProfile(
@@ -38,7 +39,7 @@ export async function getAthleteProfile(
   const { data, error } = await appDb()
     .from("athletes")
     .select(
-      "id, full_name, sex, sport, discipline, competition_level, date_of_birth",
+      "id, full_name, sex, sport, discipline, competition_level, date_of_birth, profile_id",
     )
     .eq("id", athleteId)
     .is("deleted_at", null)
@@ -54,6 +55,7 @@ export async function getAthleteProfile(
     discipline: tekst(data.discipline),
     competitionLevel: tekst(data.competition_level),
     dateOfBirth: tekst(data.date_of_birth),
+    hasAccount: data.profile_id !== null,
   };
 }
 

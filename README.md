@@ -15,13 +15,6 @@ npm run typecheck
 npm test
 ```
 
-Zet `NEXT_PUBLIC_INTAKE_URL` in `.env.local` naar het adres van `athlete-intake`
-(lokaal `http://localhost:3000`). Zonder dat adres verdwijnen de knoppen die
-naar de overkant wijzen: het intakedossier van een atleet en het nazicht van een
-ingediende intake. De app werkt verder gewoon, maar de helft van de werklijst
-loopt dan dood. Zet aan de andere kant `NEXT_PUBLIC_SCREENING_URL` naar deze
-app, anders mist die de link naar de bibliotheek.
-
 De echte afkapwaarden staan niet in git. Zonder dat kopieertje bouwt de app niet, en dat is met
 opzet: wat in de eerste commit zit, staat er voorgoed in.
 

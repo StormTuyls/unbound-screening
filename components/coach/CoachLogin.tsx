@@ -131,19 +131,13 @@ export function CoachLogin({ next }: { next: string | null }) {
           meldt zich gewoon op dit formulier aan; de voordeur op / brengt hem
           daarna bij zijn metingen. Deze link is er dus niet meer om de
           verkeerde bezoeker weg te sturen, maar om een nieuwe te laten
-          beginnen waar een dossier begint.
-
-          Alleen met een adres. /start bestaat niet in deze app, en de
-          terugval erop stuurde iemand naar een 404: een link die nergens heen
-          gaat is erger dan geen link. */}
-      {process.env.NEXT_PUBLIC_INTAKE_URL && (
-        <a
-          href={`${process.env.NEXT_PUBLIC_INTAKE_URL}/start`}
-          className="mt-2 flex min-h-11 items-center justify-center text-xs text-ink-muted underline-offset-2 hover:underline"
-        >
-          {t("toAthlete")}
-        </a>
-      )}
+          beginnen waar een dossier begint. */}
+      <Link
+        href="/start"
+        className="mt-2 flex min-h-11 items-center justify-center text-xs text-ink-muted underline-offset-2 hover:underline"
+      >
+        {t("toAthlete")}
+      </Link>
     </AuthShell>
   );
 }

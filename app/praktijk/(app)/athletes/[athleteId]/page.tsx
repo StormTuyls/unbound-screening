@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
+import { PurgeAthlete } from "@/components/coach/PurgeAthlete";
 import { getTranslations } from "next-intl/server";
 import { checkCoach, isUuid } from "@/lib/review/access";
 import {
@@ -85,7 +86,6 @@ export default async function AthleteHubPage({
 
   const t = await getTranslations("athletes");
   const ts = await getTranslations("screening");
-  const titles = await getTranslations("titles");
 
   const today = new Date().toISOString().slice(0, 10);
   const age = ageOn(athlete.dateOfBirth, today);
@@ -96,7 +96,6 @@ export default async function AthleteHubPage({
     .filter((part): part is string => part !== null)
     .join(" · ");
 
-  const intakeUrl = process.env.NEXT_PUBLIC_INTAKE_URL;
   const lastIntake = intakes[0] ?? null;
   const lastSession = sessions[0] ?? null;
 
@@ -121,7 +120,7 @@ export default async function AthleteHubPage({
       kind: t("kindIntake"),
       title: statusWord(intake.status),
       sub: intakeWhen(intake, t) ?? "",
-      href: intakeUrl ? `${intakeUrl}/review/${intake.id}` : null,
+      href: `/review/${intake.id}`,
       ink: "bg-ok",
     })),
     ...injuries.map((injury) => ({
@@ -153,16 +152,6 @@ export default async function AthleteHubPage({
           {meta && <p className="mt-1 text-sm text-ink-muted">{meta}</p>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {/* Het intakedossier woont in de andere app, op dezelfde id uit
-              dezelfde tabel. Zonder adres geen knop. */}
-          {intakeUrl && (
-            <a
-              href={`${intakeUrl}/coach/athletes/${athleteId}`}
-              className="inline-flex min-h-11 items-center rounded-md px-3.5 text-xs ring-1 ring-hairline ring-inset transition-colors hover:bg-canvas"
-            >
-              {titles("intakeFile")}
-            </a>
-          )}
           <Link
             href={`/praktijk/athletes/${athleteId}/screening/new`}
             className="inline-flex min-h-11 items-center rounded-md bg-brand-700 px-3.5 text-xs text-surface ring-1 ring-brand-700 ring-inset transition-colors hover:bg-brand-800"
@@ -217,14 +206,12 @@ export default async function AthleteHubPage({
                     {statusWord(lastIntake.status)}
                   </p>
                   <p className="mt-0.5 text-sm text-ink-muted">{intakeWhen(lastIntake, t)}</p>
-                  {intakeUrl && (
-                    <a
-                      href={`${intakeUrl}/review/${lastIntake.id}`}
-                      className="mt-3 inline-flex min-h-11 items-center rounded-md px-3.5 text-xs ring-1 ring-hairline ring-inset transition-colors hover:bg-canvas"
-                    >
-                      {t("openReport")}
-                    </a>
-                  )}
+                  <Link
+                    href={`/review/${lastIntake.id}`}
+                    className="mt-3 inline-flex min-h-11 items-center rounded-md px-3.5 text-xs ring-1 ring-hairline ring-inset transition-colors hover:bg-canvas"
+                  >
+                    {t("openReport")}
+                  </Link>
                 </>
               )}
             </section>
@@ -292,6 +279,15 @@ export default async function AthleteHubPage({
               </ol>
             )}
           </section>
+
+          {/* Onderaan en niet in de kop: dit is de enige handeling die niet
+              terug te draaien is, en ze gaat over de persoon, niet over één intake. */}
+          <PurgeAthlete
+            athleteId={athlete.id}
+            athleteName={athlete.name}
+            intakeCount={intakes.length}
+            hasAccount={athlete.hasAccount}
+          />
         </>
       )}
 
@@ -342,16 +338,12 @@ export default async function AthleteHubPage({
                 <li key={intake.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2">
                   <span className="text-sm">{statusWord(intake.status)}</span>
                   <span className="text-xs text-ink-muted">{intakeWhen(intake, t)}</span>
-                  {/* Nakijken en goedkeuren gebeurt in de intake-app: daar
-                      staat de inhoud, en daar hoort het oordeel erover. */}
-                  {intakeUrl && (
-                    <a
-                      href={`${intakeUrl}/review/${intake.id}`}
-                      className="ml-auto inline-flex min-h-11 items-center rounded-md px-3.5 text-xs ring-1 ring-hairline ring-inset transition-colors hover:bg-canvas"
-                    >
-                      {t("openReport")}
-                    </a>
-                  )}
+                  <Link
+                    href={`/review/${intake.id}`}
+                    className="ml-auto inline-flex min-h-11 items-center rounded-md px-3.5 text-xs ring-1 ring-hairline ring-inset transition-colors hover:bg-canvas"
+                  >
+                    {t("openReport")}
+                  </Link>
                 </li>
               ))}
             </ul>

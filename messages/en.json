@@ -722,6 +722,7 @@
     "statusSubmitted": "waiting for review",
     "statusDraft": "in progress",
     "purge": {
+      "done": "Deleted",
       "heading": "Delete athlete",
       "intro": "At the athlete's request, or when the retention period has passed. This is about the person, not a single intake.",
       "prepare": "Prepare deletion",

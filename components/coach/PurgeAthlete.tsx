@@ -81,7 +81,7 @@ export function PurgeAthlete({
   if (result) {
     return (
       <section className="mt-8 rounded-lg border border-hairline p-4">
-        <h2 className="text-sm font-medium">Verwijderd</h2>
+        <h2 className="text-sm font-medium">{t("done")}</h2>
         <p className="mt-1 text-xs text-ink-muted">{result}</p>
       </section>
     );

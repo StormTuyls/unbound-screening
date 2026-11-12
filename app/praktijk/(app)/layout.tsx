@@ -36,11 +36,6 @@ export default async function CoachLayout({
           { href: "/praktijk", label: t("athletes") },
           { href: "/praktijk/library", label: tl("title") },
         ]}
-        intake={
-          process.env.NEXT_PUBLIC_INTAKE_URL
-            ? { href: `${process.env.NEXT_PUBLIC_INTAKE_URL}/coach`, label: t("intake") }
-            : null
-        }
         signOut={tc("signOut")}
       />
       {/* De inhoud ligt als een witte kaart op het canvas van body. Op de

@@ -49,9 +49,6 @@ export default async function ScreeningTrendPage({
   const titles = await getTranslations("titles");
   const locale = await getLocale();
 
-  // Het dossier van deze atleet woont in de intake-app, op dezelfde id uit
-  // dezelfde tabel. Zonder adres geen knop.
-  const intakeUrl = process.env.NEXT_PUBLIC_INTAKE_URL;
   const name = (m: { testLabelNl: string; testLabelEn: string }) =>
     locale === "nl" ? m.testLabelNl : m.testLabelEn;
 
@@ -75,8 +72,7 @@ export default async function ScreeningTrendPage({
   return (
     <>
       {/* De naam hoort niet in een link: dit IS de pagina van deze atleet, dus
-          hij is de kop. Zijn intakedossier staat wel ergens, en sinds de
-          splitsing is dat een andere app op een ander domein. */}
+          hij is de kop. */}
       <header className="mb-8 flex items-start justify-between gap-6">
         <div className="min-w-0">
           <h1 className="text-2xl font-semibold tracking-tight">
@@ -88,14 +84,12 @@ export default async function ScreeningTrendPage({
           <p className="mt-2 max-w-prose text-xs text-ink-faint">{t("trendIntro")}</p>
         </div>
 
-        {intakeUrl && (
-          <a
-            href={`${intakeUrl}/coach/athletes/${athleteId}`}
-            className="flex min-h-11 shrink-0 items-center rounded-md px-3 text-xs font-medium text-ink-muted ring-1 ring-hairline ring-inset transition-colors hover:bg-canvas"
-          >
-            {titles("intakeFile")}
-          </a>
-        )}
+        <Link
+          href={`/praktijk/athletes/${athleteId}?tab=intakes`}
+          className="flex min-h-11 shrink-0 items-center rounded-md px-3 text-xs font-medium text-ink-muted ring-1 ring-hairline ring-inset transition-colors hover:bg-canvas"
+        >
+          {titles("intakeFile")}
+        </Link>
       </header>
 
       {trends.length === 0 ? (
