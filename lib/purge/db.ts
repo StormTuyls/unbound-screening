@@ -1,0 +1,90 @@
+import { queryOne } from "@/lib/db/sql";
+
+/**
+ * De databankhelft van het verwijderpad.
+ *
+ * Roept medical.purge_athlete aan, de security-definer-functie die begon in
+ * 20260908150000_purge_function.sql. Die bestaat omdat geen enkele
+ * applicatierol beide schemas kan wissen: intake_server mag niets schrijven in
+ * public.athletes en service_role heeft geen recht op medical. Eén functie maakt
+ * er één transactie van, die slaagt of niets doet.
+ *
+ * Let op welke versie er leeft: 20261009090300_screening_purge.sql doet er een
+ * `create or replace` overheen en telt de screeningtabellen mee. Dat is de versie
+ * die draait, en die migratie hoort bij de screening-repo. Zie PurgeCounts.
+ *
+ * Wat hier NIET gebeurt: Storage, auth.users en Notion. Die liggen buiten
+ * Postgres en kunnen dus nooit in dezelfde transactie. De volgorde en het
+ * hervatten daarvan is de orkestratie in lib/purge/purge.ts.
+ *
+ * `manifest` is wat die orkestratie daarna nog nodig heeft: na de delete
+ * bestaan de rijen die de storage-paden en het profiel-id beschrijven niet meer.
+ */
+
+/**
+ * Het contract met de screening-repo, en niet een eigen waarheid.
+ *
+ * Deze velden spiegelen de json die medical.purge_athlete teruggeeft. Die
+ * functie wordt na de splitsing alleen nog door unbound-screening herdefinieerd;
+ * de intake leest hem en past dit type aan als het contract verandert. Wie hier
+ * een veld bijzet zonder dat de functie het teruggeeft, krijgt undefined en geen
+ * foutmelding.
+ *
+ * De screeningvelden staan hier terwijl de screeningcode weg is. Dat is geen
+ * rest: de rijen verdwijnen via `on delete cascade` op athlete_id, dus de
+ * tellingen komen ook zonder screeningcode terug, en zonder die tellingen staat
+ * nergens vastgelegd hoeveel er is gewist.
+ */
+export interface PurgeCounts {
+  athletes: number;
+  intakes: number;
+  consents: number;
+  chat_messages: number;
+  documents: number;
+  document_pages: number;
+  field_proposals: number;
+  dossier_fields: number;
+  injury_events: number;
+  screening_sessions: number;
+  test_items: number;
+  test_trials: number;
+  trial_values: number;
+  measurements: number;
+  derived_results: number;
+  test_imports: number;
+  screening_notes: number;
+  screening_reports: number;
+  intake_reports: number;
+}
+
+export interface PurgeManifest {
+  athlete_id: string;
+  profile_id: string | null;
+  intake_ids: string[];
+  document_ids: string[];
+  screening_session_ids: string[];
+  storage_paths: string[];
+}
+
+export interface PurgeDbResult {
+  counts: PurgeCounts;
+  manifest: PurgeManifest;
+}
+
+export async function purgeAthleteRows(input: {
+  athleteId: string;
+  actorId?: string | null;
+  actorKind?: "coach" | "admin" | "system";
+}): Promise<PurgeDbResult> {
+  const row = await queryOne<{ result: PurgeDbResult }>(
+    "select medical.purge_athlete($1, $2, $3) as result",
+    [input.athleteId, input.actorId ?? null, input.actorKind ?? "system"],
+  );
+
+  // De functie geeft altijd een object terug, ook voor een atleet die niet
+  // bestaat: dan staan er nullen in. Geen resultaat betekent dus dat de aanroep
+  // zelf misging, en dat mag niet stil blijven.
+  if (!row) throw new Error("purge_athlete gaf geen resultaat terug");
+
+  return row.result;
+}

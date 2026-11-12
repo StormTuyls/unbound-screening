@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { currentCoach } from "@/lib/review/access";
-import { currentAthlete } from "@/lib/athlete/identity";
+import { currentAthlete } from "@/lib/intake/athlete";
 
 export const dynamic = "force-dynamic";
 

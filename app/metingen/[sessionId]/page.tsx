@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
-import { currentAthlete } from "@/lib/athlete/identity";
+import { currentAthlete } from "@/lib/intake/athlete";
 import { getReleasedSession } from "@/lib/db/screening";
 import { getScreeningReport } from "@/lib/report/screeningFreeze";
 import type { SnapshotResult } from "@/lib/report/screeningSnapshot";

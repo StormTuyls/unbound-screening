@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
-import { currentAthlete } from "@/lib/athlete/identity";
+import { currentAthlete } from "@/lib/intake/athlete";
 import { listReleasedSessions } from "@/lib/db/screening";
 
 export async function generateMetadata() {

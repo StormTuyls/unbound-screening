@@ -59,7 +59,8 @@
     "retry": "Opnieuw proberen",
     "notFound": "Deze pagina bestaat niet",
     "notFoundNote": "De link klopt niet, of het dossier is verwijderd.",
-    "backToAthletes": "Terug naar de atleten"
+    "backToAthletes": "Terug naar de atleten",
+    "backHome": "Terug naar het begin"
   },
   "sharing": {
     "title": "Voordat je dit naar je coach stuurt",
@@ -501,7 +502,8 @@
     "profile": "Profiel",
     "password": "Wachtwoord",
     "consent": "Toestemming",
-    "intakeFile": "Intakedossier"
+    "intakeFile": "Intakedossier",
+    "screening": "Screening"
   },
   "consentGate": {
     "title": "Eén ding voordat we beginnen",

@@ -59,7 +59,8 @@
     "retry": "Try again",
     "notFound": "This page does not exist",
     "notFoundNote": "The link is wrong, or the file has been deleted.",
-    "backToAthletes": "Back to the athletes"
+    "backToAthletes": "Back to the athletes",
+    "backHome": "Back to the start"
   },
   "sharing": {
     "title": "Before you send this to your coach",
@@ -501,7 +502,8 @@
     "profile": "Profile",
     "password": "Password",
     "consent": "Consent",
-    "intakeFile": "Intake file"
+    "intakeFile": "Intake file",
+    "screening": "Screening"
   },
   "consentGate": {
     "title": "One thing before we start",
