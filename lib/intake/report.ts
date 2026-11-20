@@ -1,4 +1,4 @@
-import { appDb } from "@/lib/supabase/service";
+import { queryOne } from "@/lib/db/sql";
 import { listDocuments } from "@/lib/db/medical";
 import { getProposals, syncDossier } from "@/lib/db/dossier";
 import { formatValue } from "@/lib/intake/format";
@@ -187,11 +187,14 @@ export async function loadAthleteReport(input: {
   intakeId: string;
   athleteId: string;
 }): Promise<AthleteReport | null> {
-  const { data: intake } = await appDb()
-    .from("intakes")
-    .select("id, athlete_id, status, started_at, submitted_at, locale")
-    .eq("id", input.intakeId)
-    .maybeSingle();
+  // Tijdstippen in de JSON-vorm van PostgREST, zie readMessages in transcript.ts.
+  const intake = await queryOne<Record<string, unknown>>(
+    `select id, athlete_id, status, locale,
+            to_json(started_at) #>> '{}' as started_at,
+            to_json(submitted_at) #>> '{}' as submitted_at
+       from public.intakes where id = $1`,
+    [input.intakeId],
+  );
 
   if (!intake || intake.athlete_id !== input.athleteId) return null;
 

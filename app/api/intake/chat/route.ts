@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { apiMessages } from "@/lib/i18n/server";
 import { NUDGES, type NudgeKey } from "@/lib/claude/prompts/chat";
-import { appDb } from "@/lib/supabase/service";
+import { query } from "@/lib/db/sql";
 import { requireEditableIntake } from "@/lib/intake/session";
 import { badRequest, handleError } from "@/lib/http";
 import { addProposals, getProposals, syncDossier } from "@/lib/db/dossier";
@@ -72,30 +72,20 @@ export async function POST(request: Request) {
       message?: string;
       nudge?: NudgeKey;
     };
-    const db = appDb();
-
     // Antwoord van de atleet eerst opslaan, dan pas het model erbij halen. Zo
     // is een klapper in de modelcall geen verloren antwoord.
     if (body.message?.trim()) {
-      const { error } = await db.from("chat_messages").insert({
-        intake_id: session.intakeId,
-        role: "user",
-        content: body.message.trim(),
-      });
-      if (error) throw new Error(`bericht opslaan mislukt: ${error.message}`);
+      await query(
+        "insert into public.chat_messages (intake_id, role, content) values ($1, 'user', $2)",
+        [session.intakeId, body.message.trim()],
+      );
     }
 
-    const { data: history, error: historyError } = await db
-      .from("chat_messages")
-      .select("role, content")
-      .eq("intake_id", session.intakeId)
-      .order("id")
-      // Een intake blijft kort; dit is een plafond, geen paginatie.
-      .limit(60);
-
-    if (historyError) {
-      throw new Error(`gesprek lezen mislukt: ${historyError.message}`);
-    }
+    // Een intake blijft kort; de limiet is een plafond, geen paginatie.
+    const history = await query<{ role: string; content: string }>(
+      "select role, content from public.chat_messages where intake_id = $1 order by id limit 60",
+      [session.intakeId],
+    );
 
     const state = await syncDossier(session.intakeId, session.locale);
 
@@ -159,12 +149,11 @@ export async function POST(request: Request) {
       );
     }
 
-    await db.from("chat_messages").insert({
-      intake_id: session.intakeId,
-      role: "assistant",
-      content: turn.reply,
-      about_field_key: turn.aboutFieldKey,
-    });
+    await query(
+      `insert into public.chat_messages (intake_id, role, content, about_field_key)
+       values ($1, 'assistant', $2, $3)`,
+      [session.intakeId, turn.reply, turn.aboutFieldKey],
+    );
 
     const after = await syncDossier(session.intakeId, session.locale);
 

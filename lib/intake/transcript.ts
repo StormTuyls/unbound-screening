@@ -1,4 +1,4 @@
-import { appDb } from "@/lib/supabase/service";
+import { query } from "@/lib/db/sql";
 import { listDocuments, listSkips } from "@/lib/db/medical";
 import { getProposals, syncDossier } from "@/lib/db/dossier";
 import { intakeTitle } from "@/lib/db/intakeTitle";
@@ -149,21 +149,18 @@ interface ChatMessageRow {
 }
 
 /**
- * De rol intake_server heeft geen select op public.chat_messages (zie de grants
- * in 20260902110000_grants.sql), dus dit kan geen join zijn met de medische
- * tabellen. Berichten via PostgREST, medische data via de directe verbinding, en
- * samenvoegen in TypeScript. Een grant erbij zou de scheiding verzwakken voor
- * een gemak dat we niet nodig hebben.
+ * De berichten van één intake, oudste eerst.
+ *
+ * Het tijdstip als de JSON-tekst die PostgREST teruggaf, niet als Date: het
+ * transcript toont en sorteert op die tekst, en dezelfde vorm houdt de uitvoer
+ * gelijk aan wat de app voor fase 5a deed.
  */
 async function readMessages(intakeId: string): Promise<ChatMessageRow[]> {
-  const { data, error } = await appDb()
-    .from("chat_messages")
-    .select("id, role, content, created_at")
-    .eq("intake_id", intakeId)
-    .order("id");
-
-  if (error) throw new Error(`chatberichten lezen mislukt: ${error.message}`);
-  return (data ?? []) as ChatMessageRow[];
+  return query<ChatMessageRow>(
+    `select id::int as id, role, content, to_json(created_at) #>> '{}' as created_at
+       from public.chat_messages where intake_id = $1 order by id`,
+    [intakeId],
+  );
 }
 
 /**

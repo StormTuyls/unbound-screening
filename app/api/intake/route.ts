@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiMessages } from "@/lib/i18n/server";
-import { appDb } from "@/lib/supabase/service";
+import { query, queryOne } from "@/lib/db/sql";
 import { newToken, setSessionCookie } from "@/lib/intake/session";
 import { badRequest, handleError } from "@/lib/http";
 import { currentAthlete } from "@/lib/intake/athlete";
@@ -87,34 +87,26 @@ export async function POST(request: Request) {
     // body kreeg voorrang, en HomeScreen stuurde altijd "en" mee.
     const locale = athlete.locale;
 
-    const db = appDb();
-
     // Eén intake tegelijk. Twee openstaande concepten naast elkaar levert een
     // thuisscherm op waar de atleet moet kiezen welk half ingevuld dossier hij
     // bedoelt, en dat is geen keuze die iemand kan maken.
-    const { data: open } = await db
-      .from("intakes")
-      .select("id")
-      .eq("athlete_id", athlete.athleteId)
-      .eq("status", "draft")
-      .order("started_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const open = await queryOne<{ id: string }>(
+      `select id from public.intakes
+        where athlete_id = $1 and status = 'draft'
+        order by started_at desc limit 1`,
+      [athlete.athleteId],
+    );
 
     const { token, hash } = newToken();
 
     if (open) {
       // Bestaand concept hervatten: nieuw token, zodat dit toestel verder kan
       // zonder dat een ouder cookie elders geldig blijft.
-      const { error } = await db
-        .from("intakes")
-        .update({ access_token_hash: hash })
-        .eq("id", open.id);
-      if (error) throw new Error(`intake hervatten mislukt: ${error.message}`);
+      await query("update public.intakes set access_token_hash = $2 where id = $1", [open.id, hash]);
 
       // Ook bij hervatten, want het profiel kan sinds de vorige keer gewijzigd
       // zijn en dit concept is nog niet ingediend.
-      await syncProfileToDossier({ intakeId: open.id as string, athleteId: athlete.athleteId });
+      await syncProfileToDossier({ intakeId: open.id, athleteId: athlete.athleteId });
 
       await setSessionCookie(token);
       return NextResponse.json({ intakeId: open.id, locale, resumed: true });
@@ -123,20 +115,12 @@ export async function POST(request: Request) {
     // consent_granted_at wordt hier gezet en niet in een aparte stap: de
     // toestemming bestaat al op accountniveau, dus een intake die er zonder
     // begint zou een toestand zijn die niet voorkomt.
-    const { data: intake, error: intakeError } = await db
-      .from("intakes")
-      .insert({
-        athlete_id: athlete.athleteId,
-        locale,
-        access_token_hash: hash,
-        consent_granted_at: new Date().toISOString(),
-      })
-      .select("id")
-      .single();
-
-    if (intakeError || !intake) {
-      throw new Error(`intake aanmaken mislukt: ${intakeError?.message}`);
-    }
+    const intake = await queryOne<{ id: string }>(
+      `insert into public.intakes (athlete_id, locale, access_token_hash, consent_granted_at)
+       values ($1, $2, $3, now()) returning id`,
+      [athlete.athleteId, locale, hash],
+    );
+    if (!intake) throw new Error("intake aanmaken mislukt");
 
     // De consentvelden ook als dossiervelden, zodat het rapport en het
     // coachscherm kunnen tonen waar deze atleet mee heeft ingestemd zonder in

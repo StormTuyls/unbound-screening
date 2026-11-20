@@ -1,4 +1,4 @@
-import { appDb } from "@/lib/supabase/service";
+import { query } from "@/lib/db/sql";
 import { addProposals, getProposals, saveDossier } from "@/lib/db/medical";
 import { resolveDossier } from "@/lib/dossier/merge";
 import {
@@ -19,15 +19,11 @@ export { addProposals, getProposals } from "@/lib/db/medical";
  * mogen door de coach in de browser gelezen worden.
  */
 export async function getFieldDefinitions(): Promise<FieldDefinition[]> {
-  const { data, error } = await appDb()
-    .from("field_definitions")
-    .select("*")
-    .order("section")
-    .order("sort_order");
+  const rows = await query<Record<string, any>>(
+    "select * from public.field_definitions order by section, sort_order",
+  );
 
-  if (error) throw new Error(`velddefinities lezen mislukt: ${error.message}`);
-
-  const definitions: FieldDefinition[] = (data ?? []).map((row) => ({
+  const definitions: FieldDefinition[] = rows.map((row) => ({
     key: row.key,
     section: row.section,
     sortOrder: row.sort_order,

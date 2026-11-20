@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { apiMessages } from "@/lib/i18n/server";
 import { badRequest, handleError } from "@/lib/http";
-import { appDb } from "@/lib/supabase/service";
+import { queryOne } from "@/lib/db/sql";
 import { currentAthlete } from "@/lib/intake/athlete";
 import { IntakeAuthError, clearSessionCookie, currentIntake } from "@/lib/intake/session";
 import { discardIntake } from "@/lib/intake/discard";
@@ -70,12 +70,10 @@ export async function POST(request: Request) {
     // anders geeft hier nul rijen, en dus dezelfde melding als een intake die
     // niet bestaat. Geen verschil, want het verschil zou verklappen dat hij
     // bestaat.
-    const { data: intake } = await appDb()
-      .from("intakes")
-      .select("id, status")
-      .eq("id", intakeId)
-      .eq("athlete_id", athlete.athleteId)
-      .maybeSingle();
+    const intake = await queryOne<{ id: string; status: string }>(
+      "select id, status from public.intakes where id = $1 and athlete_id = $2",
+      [intakeId, athlete.athleteId],
+    );
 
     if (!intake) return badRequest(t("intakeNotFound"));
 

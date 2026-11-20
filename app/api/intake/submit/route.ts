@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { apiMessages, requestLocale } from "@/lib/i18n/server";
-import { appDb } from "@/lib/supabase/service";
+import { query } from "@/lib/db/sql";
 import { requireIntake } from "@/lib/intake/session";
 import { badRequest, handleError } from "@/lib/http";
 import { syncDossier } from "@/lib/db/dossier";
@@ -50,13 +50,11 @@ export async function POST(request: Request) {
       );
     }
 
-    const { error } = await appDb()
-      .from("intakes")
-      .update({ status: "submitted", submitted_at: new Date().toISOString() })
-      .eq("id", session.intakeId)
-      .eq("status", "draft");
-
-    if (error) throw new Error(`indienen mislukt: ${error.message}`);
+    await query(
+      `update public.intakes set status = 'submitted', submitted_at = now()
+        where id = $1 and status = 'draft'`,
+      [session.intakeId],
+    );
 
     // Eerst vastleggen, dan pas het rapport bevriezen: de deelkeuze bepaalt of
     // de samenvatting klinisch of zakelijk mag zijn, en die staat in het

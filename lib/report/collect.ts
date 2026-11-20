@@ -1,4 +1,4 @@
-import { appDb } from "@/lib/supabase/service";
+import { queryOne } from "@/lib/db/sql";
 import { getProposals, syncDossier } from "@/lib/db/dossier";
 import { listDocuments } from "@/lib/db/medical";
 import { getInjuries } from "@/lib/db/review";
@@ -27,13 +27,18 @@ export async function collectReportData(
   intakeId: string,
   reason: FreezeReason,
 ): Promise<ReportSnapshot> {
-  const { data: intake, error } = await appDb()
-    .from("intakes")
-    .select("id, status, locale, started_at, submitted_at, consent_granted_at, athlete_id")
-    .eq("id", intakeId)
-    .single();
-
-  if (error || !intake) throw new Error(`intake niet gevonden: ${error?.message}`);
+  // Tijdstippen als de JSON-tekst van PostgREST en niet als Date. Dit wordt
+  // gehasht: een andere notatie van hetzelfde moment zou bij elke intake een
+  // nieuwe rapportversie opleveren zonder dat er iets veranderd is.
+  const intake = await queryOne<Record<string, unknown>>(
+    `select id, status, locale, athlete_id,
+            to_json(started_at) #>> '{}' as started_at,
+            to_json(submitted_at) #>> '{}' as submitted_at,
+            to_json(consent_granted_at) #>> '{}' as consent_granted_at
+       from public.intakes where id = $1`,
+    [intakeId],
+  );
+  if (!intake) throw new Error(`intake niet gevonden: ${intakeId}`);
 
   const locale = (intake.locale as "nl" | "en") ?? "nl";
 
@@ -43,18 +48,24 @@ export async function collectReportData(
       getProposals(intakeId),
       listDocuments(intakeId),
       getInjuries(intakeId),
-      appDb()
-        .from("athletes")
-        .select("full_name, email, phone, club, federation")
-        .eq("id", intake.athlete_id)
-        .single(),
-      appDb()
-        .from("consents")
-        .select("consent_version, granted_at, withdrawn_at")
-        .eq("intake_id", intakeId)
-        .order("granted_at", { ascending: false })
-        .limit(1)
-        .maybeSingle(),
+      queryOne<{
+        full_name: string | null;
+        email: string | null;
+        phone: string | null;
+        club: string | null;
+        federation: string | null;
+      }>(
+        "select full_name, email, phone, club, federation from public.athletes where id = $1",
+        [intake.athlete_id],
+      ),
+      queryOne<{ consent_version: string; granted_at: string; withdrawn_at: string | null }>(
+        `select consent_version,
+                to_json(granted_at) #>> '{}' as granted_at,
+                to_json(withdrawn_at) #>> '{}' as withdrawn_at
+           from public.consents where intake_id = $1
+          order by granted_at desc limit 1`,
+        [intakeId],
+      ),
     ]);
 
   const proposalById = new Map(proposals.map((p) => [p.id, p]));
@@ -114,18 +125,18 @@ export async function collectReportData(
     },
 
     athlete: {
-      fullName: athleteRow.data?.full_name ?? null,
-      email: athleteRow.data?.email ?? null,
-      phone: athleteRow.data?.phone ?? null,
-      club: athleteRow.data?.club ?? null,
-      federation: athleteRow.data?.federation ?? null,
+      fullName: athleteRow?.full_name ?? null,
+      email: athleteRow?.email ?? null,
+      phone: athleteRow?.phone ?? null,
+      club: athleteRow?.club ?? null,
+      federation: athleteRow?.federation ?? null,
     },
 
     consent: {
-      version: consentRow.data?.consent_version ?? null,
+      version: consentRow?.consent_version ?? null,
       grantedAt:
-        consentRow.data?.granted_at ?? (intake.consent_granted_at as string | null) ?? null,
-      withdrawnAt: consentRow.data?.withdrawn_at ?? null,
+        consentRow?.granted_at ?? (intake.consent_granted_at as string | null) ?? null,
+      withdrawnAt: consentRow?.withdrawn_at ?? null,
       // Dezelfde poort als lib/notion/sync.ts gebruikt, en met opzet uit het
       // dossierveld: dat veld is een spiegel van public.consents en de chat kan
       // er niet meer aankomen (zie de consentfilter in de chatroute).

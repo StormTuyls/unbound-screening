@@ -3,7 +3,7 @@ import { enumLabel } from "@/lib/dossier/enumLabels";
 import { isDeprecatedSport } from "@/lib/intake/sports";
 import { PROFILE_COLUMNS, PROFILE_FIELDS } from "@/lib/intake/profileFields";
 import { z } from "zod";
-import { appDb } from "@/lib/supabase/service";
+import { query, queryOne, transaction } from "@/lib/db/sql";
 
 /**
  * Het profiel van de atleet: zijn eigen gegevens, en bij wie hij hoort.
@@ -84,16 +84,13 @@ function initialsOf(name: string): string {
  * behandeld heeft. Zie 20260910140000_practitioner_archive.sql.
  */
 export async function listPractitioners(): Promise<PractitionerOption[]> {
-  const { data, error } = await appDb()
-    .from("profiles")
-    .select("id, full_name, practitioner_kind")
-    .not("practitioner_kind", "is", null)
-    .is("archived_at", null)
-    .order("full_name");
+  const data = await query<{ id: string; full_name: string | null; practitioner_kind: string }>(
+    `select id, full_name, practitioner_kind from public.profiles
+      where practitioner_kind is not null and archived_at is null
+      order by full_name`,
+  );
 
-  if (error) throw new Error(`behandelaars ophalen mislukt: ${error.message}`);
-
-  return (data ?? [])
+  return data
     .map((row) => {
       // Een behandelaar zonder naam is voor de atleet niet te kiezen: "?" in
       // een lijstje is geen keuze. create-coach.ts zet de naam, dus dit is een
@@ -118,24 +115,16 @@ export async function loadProfile(input: {
   locale?: "nl" | "en";
 }): Promise<ProfileData> {
   const locale = input.locale ?? "nl";
-  const [athlete, practitioners, definitions] = await Promise.all([
-    appDb()
-      .from("athletes")
-      .select(
-        "full_name, email, phone, date_of_birth, sport, discipline, club, federation, coach_name, street, postal_code, city, country, practitioner_id",
-      )
-      .eq("id", input.athleteId)
-      .is("deleted_at", null)
-      .maybeSingle(),
+  const [row, practitioners, definitions] = await Promise.all([
+    queryOne<Record<string, unknown>>(
+      `select full_name, email, phone, date_of_birth, sport, discipline, club, federation,
+              coach_name, street, postal_code, city, country, practitioner_id
+         from public.athletes where id = $1 and deleted_at is null`,
+      [input.athleteId],
+    ),
     listPractitioners(),
     getFieldDefinitions(),
   ]);
-
-  if (athlete.error) {
-    throw new Error(`profiel ophalen mislukt: ${athlete.error.message}`);
-  }
-
-  const row = athlete.data;
 
   return {
     email: (row?.email as string | null) ?? input.email,
@@ -313,38 +302,37 @@ export async function saveProfile(input: {
   userId: string;
   values: AthleteProfileValues;
 }): Promise<void> {
-  const db = appDb();
-
-  const { error } = await db
-    .from("athletes")
-    .update({
-      full_name: input.values.fullName,
-      date_of_birth: input.values.dateOfBirth,
-      phone: input.values.phone,
-      sport: input.values.sport,
-      discipline: input.values.discipline,
-      club: input.values.club,
-      federation: input.values.federation,
-      coach_name: input.values.coachName,
-      street: input.values.street,
-      postal_code: input.values.postalCode,
-      city: input.values.city,
-      country: input.values.country,
-      practitioner_id: input.values.practitionerId,
-    })
-    .eq("id", input.athleteId)
-    .is("deleted_at", null);
-
-  if (error) throw new Error(`profiel opslaan mislukt: ${error.message}`);
-
-  const { error: profileError } = await db
-    .from("profiles")
-    .update({ full_name: input.values.fullName })
-    .eq("id", input.userId);
-
-  if (profileError) {
-    throw new Error(`naam in profiel opslaan mislukt: ${profileError.message}`);
-  }
+  // Atleetrij en profielnaam samen: dezelfde naam op twee plekken, en half
+  // bewaard staat er een andere naam boven het dossier dan in de kop.
+  await transaction(async (run) => {
+    await run(
+      `update public.athletes
+          set full_name = $2, date_of_birth = $3, phone = $4, sport = $5, discipline = $6,
+              club = $7, federation = $8, coach_name = $9, street = $10, postal_code = $11,
+              city = $12, country = $13, practitioner_id = $14
+        where id = $1 and deleted_at is null`,
+      [
+        input.athleteId,
+        input.values.fullName,
+        input.values.dateOfBirth,
+        input.values.phone,
+        input.values.sport,
+        input.values.discipline,
+        input.values.club,
+        input.values.federation,
+        input.values.coachName,
+        input.values.street,
+        input.values.postalCode,
+        input.values.city,
+        input.values.country,
+        input.values.practitionerId,
+      ],
+    );
+    await run("update public.profiles set full_name = $2 where id = $1", [
+      input.userId,
+      input.values.fullName,
+    ]);
+  });
 }
 
 /**
@@ -369,14 +357,12 @@ export async function syncProfileToDossier(input: {
   intakeId: string;
   athleteId: string;
 }): Promise<number> {
-  const { data, error } = await appDb()
-    .from("athletes")
-    .select(PROFILE_COLUMNS.join(", "))
-    .eq("id", input.athleteId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (error) throw new Error(`profiel lezen mislukt: ${error.message}`);
+  // De kolomnamen komen uit PROFILE_FIELDS in de code, niet uit invoer.
+  const data = await queryOne(
+    `select ${PROFILE_COLUMNS.join(", ")} from public.athletes
+      where id = $1 and deleted_at is null`,
+    [input.athleteId],
+  );
   if (!data) return 0;
 
   const row = data as unknown as Record<string, unknown>;
@@ -410,15 +396,12 @@ export async function syncProfileToDossier(input: {
  * een rapportversie die achteraf verschuift is geen rapportversie.
  */
 export async function syncProfileToOpenIntakes(athleteId: string): Promise<void> {
-  const { data, error } = await appDb()
-    .from("intakes")
-    .select("id")
-    .eq("athlete_id", athleteId)
-    .eq("status", "draft");
+  const data = await query<{ id: string }>(
+    "select id from public.intakes where athlete_id = $1 and status = 'draft'",
+    [athleteId],
+  );
 
-  if (error) throw new Error(`concepten zoeken mislukt: ${error.message}`);
-
-  for (const intake of data ?? []) {
-    await syncProfileToDossier({ intakeId: intake.id as string, athleteId });
+  for (const intake of data) {
+    await syncProfileToDossier({ intakeId: intake.id, athleteId });
   }
 }

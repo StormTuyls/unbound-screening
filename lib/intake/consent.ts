@@ -1,4 +1,4 @@
-import { appDb } from "@/lib/supabase/service";
+import { query, queryOne, transaction } from "@/lib/db/sql";
 import { retentionConfig, retentionUntil } from "@/lib/intake/retention";
 import type { Locale } from "@/lib/i18n/locale";
 
@@ -55,64 +55,55 @@ export async function recordAccountConsent(input: {
   athleteId: string;
   context: ConsentContext;
 }): Promise<void> {
-  const db = appDb();
-
   const purposes = Object.fromEntries(ACCOUNT_PURPOSES.map((key) => [key, true]));
-
-  // Geen upsert met onConflict. De unieke index is partieel (`where intake_id is
-  // null`), en Postgres kan een partiële index niet gebruiken om een ON CONFLICT
-  // te herleiden tenzij de statement dezelfde WHERE meekrijgt, wat PostgREST niet
-  // doet. Dus eerst kijken, dan schrijven, en een dubbele insert van een race
-  // opvatten als "stond er al" in plaats van als fout.
-  if (!(await hasAccountConsent(input.athleteId))) {
-    const { error } = await db.from("consents").insert({
-      athlete_id: input.athleteId,
-      intake_id: null,
-      consent_version: CONSENT_VERSION,
-      purposes,
-      ip: input.context.ip,
-      user_agent: input.context.userAgent,
-      locale: input.context.locale,
-    });
-
-    // 23505 is de unieke index: iemand anders was net eerder. Dat is het
-    // gewenste eindresultaat, geen fout om de aanmelding op te laten klappen.
-    if (error && error.code !== "23505") {
-      throw new Error(`accountconsent opslaan mislukt: ${error.message}`);
-    }
-  }
+  const alreadyGiven = await hasAccountConsent(input.athleteId);
 
   // Eén bron voor de termijn, zie lib/intake/retention.ts: de tekst die de
   // atleet las en de datum die hier wordt opgeslagen moeten hetzelfde zeggen.
   const config = retentionConfig();
   const indefinite = config.mode === "indefinite";
 
-  const { error: athleteError } = await db
-    .from("athletes")
-    .update({
-      retention_mode: config.mode,
-      retention_until: retentionUntil(),
-      retention_basis: indefinite ? config.basis : null,
-    })
-    .eq("id", input.athleteId);
-
-  if (athleteError) {
-    throw new Error(`bewaartermijn vastleggen mislukt: ${athleteError.message}`);
-  }
+  // Toestemming en termijn samen of niet: een toestemming zonder termijn laat
+  // de voorlopige termijn van bij het aanmelden staan, en dan ruimt de
+  // retentiejob een atleet op die wel instemde.
+  await transaction(async (run) => {
+    if (!alreadyGiven) {
+      // De unieke index is partieel (where intake_id is null). Met dezelfde
+      // WHERE in de ON CONFLICT vangt Postgres een gelijktijdige tweede
+      // aanmelding zelf op: stond er al, dan is dat het gewenste eindresultaat.
+      await run(
+        `insert into public.consents
+           (athlete_id, intake_id, consent_version, purposes, ip, user_agent, locale)
+         values ($1, null, $2, $3::jsonb, $4::inet, $5, $6)
+         on conflict (athlete_id, consent_version) where intake_id is null do nothing`,
+        [
+          input.athleteId,
+          CONSENT_VERSION,
+          JSON.stringify(purposes),
+          input.context.ip,
+          input.context.userAgent,
+          input.context.locale,
+        ],
+      );
+    }
+    await run(
+      `update public.athletes
+          set retention_mode = $2, retention_until = $3, retention_basis = $4
+        where id = $1`,
+      [input.athleteId, config.mode, retentionUntil(), indefinite ? config.basis : null],
+    );
+  });
 }
 
 /** Heeft deze atleet toestemming op accountniveau gegeven? */
 export async function hasAccountConsent(athleteId: string): Promise<boolean> {
-  const { data } = await appDb()
-    .from("consents")
-    .select("id")
-    .eq("athlete_id", athleteId)
-    .is("intake_id", null)
-    .is("withdrawn_at", null)
-    .limit(1)
-    .maybeSingle();
-
-  return Boolean(data);
+  const row = await queryOne(
+    `select 1 from public.consents
+      where athlete_id = $1 and intake_id is null and withdrawn_at is null
+      limit 1`,
+    [athleteId],
+  );
+  return row !== null;
 }
 
 /**
@@ -129,15 +120,18 @@ export async function recordSharingChoice(input: {
   share: boolean;
   context: ConsentContext;
 }): Promise<void> {
-  const { error } = await appDb().from("consents").insert({
-    athlete_id: input.athleteId,
-    intake_id: input.intakeId,
-    consent_version: CONSENT_VERSION,
-    purposes: { share_with_practitioners: input.share },
-    ip: input.context.ip,
-    user_agent: input.context.userAgent,
-    locale: input.context.locale,
-  });
-
-  if (error) throw new Error(`deelkeuze opslaan mislukt: ${error.message}`);
+  await query(
+    `insert into public.consents
+       (athlete_id, intake_id, consent_version, purposes, ip, user_agent, locale)
+     values ($1, $2, $3, $4::jsonb, $5::inet, $6, $7)`,
+    [
+      input.athleteId,
+      input.intakeId,
+      CONSENT_VERSION,
+      JSON.stringify({ share_with_practitioners: input.share }),
+      input.context.ip,
+      input.context.userAgent,
+      input.context.locale,
+    ],
+  );
 }

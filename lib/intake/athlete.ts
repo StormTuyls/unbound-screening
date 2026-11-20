@@ -1,5 +1,4 @@
 import { createServerSupabase } from "@/lib/supabase/server";
-import { appDb } from "@/lib/supabase/service";
 import { queryOne } from "@/lib/db/sql";
 import { preConsentUntil } from "@/lib/intake/retention";
 
@@ -25,26 +24,6 @@ import { preConsentUntil } from "@/lib/intake/retention";
  * behandeling is, is allebei: staf in zijn rol, atleet in zijn dossier. Zie
  * roleAfterSignup() voor waarom een aanmelding die rol niet mag platwalsen.
  */
-
-/**
- * Welke rol er na een aanmelding in het profiel hoort te staan.
- *
- * Bijna altijd 'athlete', en daarom stond hier eerst gewoon die waarde. Dat
- * klopte zolang staf en atleten twee gescheiden groepen mensen waren. Sinds een
- * behandelaar die zelf in behandeling is allebei kan zijn, is een vaste waarde
- * hier een stille degradatie: één aanroep en een kinesist is zijn rechten kwijt,
- * zonder fout en zonder spoor buiten het audit-log.
- *
- * De atleetkant heeft die rol niet nodig. currentAthlete() zoekt op profile_id
- * en de policies athletes_select en intakes_select geven toegang op
- * `profile_id = auth.uid()` óf `is_staff()`. Staf laten staan kost dus niets aan
- * de atleetkant en bewaart wel wat er anders verdwijnt.
- */
-export function roleAfterSignup(
-  existing: string | null | undefined,
-): "athlete" | "coach" | "admin" {
-  return existing === "coach" || existing === "admin" ? existing : "athlete";
-}
 
 export interface AthleteIdentity {
   /** auth.users.id, tevens profiles.id. */
@@ -101,39 +80,27 @@ export async function ensureAthleteForUser(input: {
   fullName: string | null;
   locale: "nl" | "en";
 }): Promise<AthleteIdentity> {
-  const db = appDb();
-
-  // Eerst kijken wat er staat. Een upsert die de rol meeschrijft overschrijft
-  // hem ook, en bij een behandelaar met een eigen dossier is dat het verschil
-  // tussen een profiel bijwerken en iemand buitensluiten. Zie roleAfterSignup().
-  const { data: current } = await db
-    .from("profiles")
-    .select("role")
-    .eq("id", input.userId)
-    .maybeSingle();
-
-  const { error: profileError } = await db.from("profiles").upsert(
-    {
-      id: input.userId,
-      role: roleAfterSignup(current?.role as string | undefined),
-      full_name: input.fullName,
-      locale: input.locale,
-    },
-    { onConflict: "id" },
+  // De rol staat alleen in de insert. Bestaat het profiel al, dan blijft de rol
+  // wat hij was: een behandelaar die zelf in behandeling is, is allebei, en een
+  // vaste 'athlete' zou hem stil zijn rechten afnemen, zonder fout en zonder
+  // spoor buiten het audit-log. De atleetkant heeft die rol niet nodig:
+  // currentAthlete() zoekt op profile_id.
+  await queryOne(
+    `insert into public.profiles (id, role, full_name, locale)
+     values ($1, 'athlete', $2, $3)
+     on conflict (id) do update set full_name = excluded.full_name, locale = excluded.locale`,
+    [input.userId, input.fullName, input.locale],
   );
-  if (profileError) throw new Error(`profiel opslaan mislukt: ${profileError.message}`);
 
-  const { data: existing } = await db
-    .from("athletes")
-    .select("id")
-    .eq("profile_id", input.userId)
-    .is("deleted_at", null)
-    .maybeSingle();
+  const existing = await queryOne<{ id: string }>(
+    "select id from public.athletes where profile_id = $1 and deleted_at is null",
+    [input.userId],
+  );
 
   if (existing) {
     return {
       userId: input.userId,
-      athleteId: existing.id as string,
+      athleteId: existing.id,
       email: input.email,
       fullName: input.fullName,
       locale: input.locale,
@@ -143,27 +110,21 @@ export async function ensureAthleteForUser(input: {
   // Retentie blijft hier bewust leeg. De databank staat dat alleen toe tussen
   // aanmaken en het geven van consent, en consent is de plek waar de termijn
   // wordt vastgelegd omdat het onderdeel is van waar iemand mee instemt.
-  const { data: created, error } = await db
-    .from("athletes")
-    .insert({
-      profile_id: input.userId,
-      full_name: input.fullName,
-      email: input.email,
-      locale: input.locale,
-      retention_mode: "until_date",
-      // Voorlopige termijn, zie PRE_CONSENT_DAYS. recordAccountConsent
-      // overschrijft hem in dezelfde aanvraag; blijft hij staan, dan is de
-      // aanmelding halverwege gestrand en ruimt de retentiejob hem op.
-      retention_until: preConsentUntil(),
-    })
-    .select("id")
-    .single();
-
-  if (error || !created) throw new Error(`atleet aanmaken mislukt: ${error?.message}`);
+  //
+  // Voorlopige termijn, zie PRE_CONSENT_DAYS. recordAccountConsent overschrijft
+  // hem in dezelfde aanvraag; blijft hij staan, dan is de aanmelding halverwege
+  // gestrand en ruimt de retentiejob hem op.
+  const created = await queryOne<{ id: string }>(
+    `insert into public.athletes
+       (profile_id, full_name, email, locale, retention_mode, retention_until)
+     values ($1, $2, $3, $4, 'until_date', $5) returning id`,
+    [input.userId, input.fullName, input.email, input.locale, preConsentUntil()],
+  );
+  if (!created) throw new Error("atleet aanmaken mislukt");
 
   return {
     userId: input.userId,
-    athleteId: created.id as string,
+    athleteId: created.id,
     email: input.email,
     fullName: input.fullName,
     locale: input.locale,
