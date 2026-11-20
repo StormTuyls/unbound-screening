@@ -3,6 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { checkCoach } from "@/lib/review/access";
 import { listRules } from "@/lib/db/referenceRules";
+import { BandScale } from "@/components/coach/BandScale";
+import { unitLabel } from "@/lib/screening/units";
 
 export async function generateMetadata() {
   const t = await getTranslations("library");
@@ -10,6 +12,12 @@ export async function generateMetadata() {
 }
 
 export const dynamic = "force-dynamic";
+
+const EVIDENCE: Record<string, "evidenceSourceSheet" | "evidencePublished" | "evidenceInternal"> = {
+  source_sheet: "evidenceSourceSheet",
+  published: "evidencePublished",
+  internal: "evidenceInternal",
+};
 
 const BLOCK_ORDER = ["anthropometry", "mobility_ll", "mobility_ul", "core",
                      "movement_ll", "forcedecks", "strength_ul"];
@@ -63,7 +71,7 @@ export default async function LibraryPage() {
                 <li key={rule.id}>
                   <Link
                     href={`/praktijk/library/${encodeURIComponent(rule.metricKey)}`}
-                    className="flex min-h-11 flex-col justify-center gap-1 py-2.5 transition-colors hover:bg-canvas sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
+                    className="grid min-h-11 gap-x-6 gap-y-2 py-3 transition-colors hover:bg-canvas sm:grid-cols-[minmax(0,1fr)_minmax(0,26rem)_7rem] sm:items-center"
                   >
                     <span className="min-w-0">
                       <span className="block text-sm">{name(rule)}</span>
@@ -82,10 +90,22 @@ export default async function LibraryPage() {
                           <span className="text-ink-faint">{t("protocolNotFixed")}</span>
                         )}
                       </span>
+                      {/* Waar de drempel vandaan komt hoort naast de drempel. */}
+                      <span className="mt-1 block text-xs text-ink-muted">
+                        {rule.sourceCitation ?? t(EVIDENCE[rule.evidence] ?? "evidenceInternal")}
+                      </span>
                     </span>
-                    <span className="shrink-0 text-xs text-ink-muted">
-                      {t("version", { n: rule.version })} ·{" "}
-                      {rule.bands.length} {t("bands").toLowerCase()}
+                    {/* De banden zijn hier het onderwerp, dus als figuur en niet
+                        als "4 banden". Een regel die niet indeelt toont ze
+                        gedempt: ze bestaan, maar gelden nog niet. */}
+                    <BandScale
+                      bands={rule.bands}
+                      decimals={rule.decimals}
+                      label={`${name(rule)}: ${rule.bands.map((b) => b.status).join(", ")}`}
+                      className={`w-full ${rule.classificationEnabled ? "" : "opacity-50"}`}
+                    />
+                    <span className="shrink-0 text-xs text-ink-muted tabular-nums sm:text-right">
+                      {unitLabel(rule.unit, ts("handLengths"))} · {t("version", { n: rule.version })}
                     </span>
                   </Link>
                 </li>

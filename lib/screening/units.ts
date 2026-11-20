@@ -66,6 +66,11 @@ export function unitSuffix(unit: string): string {
   return SUFFIX[unit as Unit] ?? ` ${unit}`;
 }
 
+/** De eenheid op zichzelf, voor een kolom of label: "°" en niet "deg". */
+export function unitLabel(unit: string, handLengths: string): string {
+  return unit === "hand_lengths" ? handLengths : unitSuffix(unit).trim() || unit;
+}
+
 /**
  * Standaardzwaartekracht, CODATA. Hardgecodeerd en niet afgerond naar 9,81:
  * spec §8 schrijft de waarde voluit (`mass × 9.80665`), en een afwijkende

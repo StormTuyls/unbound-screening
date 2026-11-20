@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { BandScale } from "@/components/coach/BandScale";
+import { unitLabel } from "@/lib/screening/units";
 import { notFound, redirect } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { checkCoach } from "@/lib/review/access";
@@ -42,6 +44,7 @@ export default async function RulePage({
 
   const history = await getRuleHistory(rule.ruleKey);
   const t = await getTranslations("library");
+  const unit = unitLabel(rule.unit, (await getTranslations("screening"))("handLengths"));
   const locale = await getLocale();
   const name = locale === "nl" ? rule.testLabelNl : rule.testLabelEn;
 
@@ -72,12 +75,18 @@ export default async function RulePage({
           volgende versie; dit is wat een meting vandaag te horen krijgt. */}
       <section className="mb-6">
         <h2 className="mb-1 text-sm font-medium">{t("current")}</h2>
+        <BandScale
+          bands={rule.bands}
+          decimals={rule.decimals}
+          label={`${name}: ${rule.bands.map((b) => b.status).join(", ")}`}
+          className="mb-3 w-full max-w-xl"
+        />
         <ul className="divide-y divide-hairline border-t border-hairline text-sm">
           {rule.bands.map((band) => (
             <li key={band.status} className="flex justify-between gap-4 py-1.5">
               <span>{band.status}</span>
               <span className="text-ink-muted tabular-nums">
-                {describe(band)} {rule.unit}
+                {describe(band)} {unit}
                 {band.score !== null && band.score !== undefined && (
                   <span className="ml-2 text-ink-faint">{t("score")} {band.score}</span>
                 )}
@@ -103,7 +112,7 @@ export default async function RulePage({
         <h2 className="mb-2 text-sm font-medium">{t("saveVersion")}</h2>
         <RuleEditor
           metricKey={rule.metricKey}
-          unit={rule.unit}
+          unit={unit}
           initial={{
             bands: rule.bands,
             coverage: rule.coverage,
