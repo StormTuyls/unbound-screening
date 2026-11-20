@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { apiMessages } from "@/lib/i18n/server";
 import { cookies } from "next/headers";
 import { handleError } from "@/lib/http";
-import { appDb } from "@/lib/supabase/service";
+import { query, transaction } from "@/lib/db/sql";
 import { currentAthlete } from "@/lib/intake/athlete";
 import { currentCoach } from "@/lib/review/access";
 import {
@@ -55,22 +55,24 @@ export async function POST(request: Request) {
       maxAge: LOCALE_COOKIE_MAX_AGE,
     });
 
-    const db = appDb();
     const athlete = await currentAthlete();
-
     if (athlete) {
-      await db.from("athletes").update({ locale }).eq("id", athlete.athleteId);
-      await db.from("profiles").update({ locale }).eq("id", athlete.userId);
-      // Alleen de lopende intake, zie de toelichting hierboven.
-      await db
-        .from("intakes")
-        .update({ locale })
-        .eq("athlete_id", athlete.athleteId)
-        .eq("status", "draft");
+      // Drie plekken, één beslissing: samen of niet. Een taal die op het profiel
+      // staat maar niet op de lopende intake levert een gesprek in de verkeerde
+      // taal op.
+      await transaction(async (run) => {
+        await run("update public.athletes set locale = $1 where id = $2", [locale, athlete.athleteId]);
+        await run("update public.profiles set locale = $1 where id = $2", [locale, athlete.userId]);
+        // Alleen de lopende intake, zie de toelichting hierboven.
+        await run(
+          "update public.intakes set locale = $1 where athlete_id = $2 and status = 'draft'",
+          [locale, athlete.athleteId],
+        );
+      });
     } else {
       const coach = await currentCoach();
       if (coach) {
-        await db.from("profiles").update({ locale }).eq("id", coach.id);
+        await query("update public.profiles set locale = $1 where id = $2", [locale, coach.id]);
       }
     }
 

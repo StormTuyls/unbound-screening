@@ -1,5 +1,6 @@
 import { createServerSupabase } from "@/lib/supabase/server";
 import { appDb } from "@/lib/supabase/service";
+import { queryOne } from "@/lib/db/sql";
 import { preConsentUntil } from "@/lib/intake/retention";
 
 /**
@@ -61,24 +62,26 @@ export async function currentAthlete(): Promise<AthleteIdentity | null> {
   const { data: auth, error } = await supabase.auth.getUser();
   if (error || !auth.user) return null;
 
-  // Via de service role, want de atleet mag zijn eigen `athletes`-rij lezen maar
-  // niet aanmaken (athletes_write is alleen voor staf). Het filter op profile_id
-  // doet hier het werk dat RLS anders zou doen.
-  const { data: athlete } = await appDb()
-    .from("athletes")
-    .select("id, full_name, email, locale, deleted_at")
-    .eq("profile_id", auth.user.id)
-    .is("deleted_at", null)
-    .maybeSingle();
+  // Het filter op profile_id doet hier het werk dat RLS anders zou doen.
+  const athlete = await queryOne<{
+    id: string;
+    full_name: string | null;
+    email: string | null;
+    locale: string | null;
+  }>(
+    `select id, full_name, email, locale from public.athletes
+      where profile_id = $1 and deleted_at is null`,
+    [auth.user.id],
+  );
 
   if (!athlete) return null;
 
   return {
     userId: auth.user.id,
-    athleteId: athlete.id as string,
-    email: (athlete.email as string | null) ?? auth.user.email ?? null,
-    fullName: (athlete.full_name as string | null) ?? null,
-    locale: (athlete.locale as "nl" | "en") ?? "en",
+    athleteId: athlete.id,
+    email: athlete.email ?? auth.user.email ?? null,
+    fullName: athlete.full_name,
+    locale: (athlete.locale as "nl" | "en" | null) ?? "en",
   };
 }
 

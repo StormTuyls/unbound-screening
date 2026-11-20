@@ -1,4 +1,5 @@
 import { createServerSupabase } from "@/lib/supabase/server";
+import { queryOne } from "@/lib/db/sql";
 import { CoachAuthError } from "@/lib/errors";
 
 /**
@@ -51,13 +52,12 @@ export async function checkCoach(): Promise<CoachCheck> {
 
   // De rol staat in public.profiles en niet in de tokenclaims. Bewust: een rol
   // in een token blijft geldig tot het verloopt, dus wie zijn coachrol verliest
-  // zou nog een uur binnen kunnen. De policy profiles_select_self laat alleen de
-  // eigen rij zien, dus dit lekt niets over anderen.
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("role, full_name")
-    .eq("id", auth.user.id)
-    .single();
+  // zou nog een uur binnen kunnen. Het filter op de eigen id doet wat de policy
+  // profiles_select_self deed: dit leest nooit iemand anders.
+  const profile = await queryOne<{ role: string; full_name: string | null }>(
+    "select role, full_name from public.profiles where id = $1",
+    [auth.user.id],
+  );
 
   if (!profile || (profile.role !== "coach" && profile.role !== "admin")) {
     return { kind: "not-a-coach" };

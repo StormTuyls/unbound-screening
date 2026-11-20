@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { IntakeAuthError, IntakeLockedError } from "@/lib/errors";
-import { appDb } from "@/lib/supabase/service";
+import { queryOne } from "@/lib/db/sql";
 import { createServerSupabase } from "@/lib/supabase/server";
 
 /**
@@ -66,13 +66,21 @@ export async function currentIntake(): Promise<IntakeSession | null> {
   const token = store.get(COOKIE)?.value;
   if (!token) return null;
 
-  const { data, error } = await appDb()
-    .from("intakes")
-    .select("id, athlete_id, status, locale, consent_granted_at, athletes(profile_id)")
-    .eq("access_token_hash", hashToken(token))
-    .maybeSingle();
-
-  if (error || !data) return null;
+  const data = await queryOne<{
+    id: string;
+    athlete_id: string;
+    status: IntakeSession["status"];
+    locale: "nl" | "en";
+    consent_granted_at: Date | null;
+    profile_id: string | null;
+  }>(
+    `select i.id, i.athlete_id, i.status, i.locale, i.consent_granted_at, a.profile_id
+       from public.intakes i
+       join public.athletes a on a.id = i.athlete_id
+      where i.access_token_hash = $1`,
+    [hashToken(token)],
+  );
+  if (!data) return null;
 
   // Hoort deze intake bij een account, dan moet de ingelogde gebruiker dat
   // account zijn. Zonder deze controle is het cookie op zichzelf genoeg, en dan
@@ -81,8 +89,7 @@ export async function currentIntake(): Promise<IntakeSession | null> {
   //
   // Intakes zonder profile_id blijven werken op alleen het cookie. Dat zijn de
   // dossiers van voor de accounts; nieuwe intakes krijgen altijd een eigenaar.
-  const embedded = Array.isArray(data.athletes) ? data.athletes[0] : data.athletes;
-  const ownerId = (embedded as { profile_id: string | null } | null)?.profile_id ?? null;
+  const ownerId = data.profile_id;
 
   if (ownerId !== null) {
     const supabase = await createServerSupabase();
@@ -91,11 +98,11 @@ export async function currentIntake(): Promise<IntakeSession | null> {
   }
 
   return {
-    intakeId: data.id as string,
-    athleteId: data.athlete_id as string,
-    status: data.status as IntakeSession["status"],
-    locale: data.locale as "nl" | "en",
-    consentGrantedAt: data.consent_granted_at as string | null,
+    intakeId: data.id,
+    athleteId: data.athlete_id,
+    status: data.status,
+    locale: data.locale,
+    consentGrantedAt: data.consent_granted_at?.toISOString() ?? null,
   };
 }
 

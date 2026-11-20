@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { apiMessages } from "@/lib/i18n/server";
 import { cookies } from "next/headers";
 import { handleError } from "@/lib/http";
-import { appDb } from "@/lib/supabase/service";
+import { queryOne } from "@/lib/db/sql";
 import { createServerSupabase } from "@/lib/supabase/server";
 import {
   DEFAULT_LOCALE,
@@ -36,11 +36,10 @@ export async function POST() {
       return NextResponse.json({ error: t("noSession") }, { status: 401 });
     }
 
-    const { data: profile } = await appDb()
-      .from("profiles")
-      .select("locale")
-      .eq("id", auth.user.id)
-      .maybeSingle();
+    const profile = await queryOne<{ locale: string | null }>(
+      "select locale from public.profiles where id = $1",
+      [auth.user.id],
+    );
 
     const locale = toLocale(profile?.locale ?? DEFAULT_LOCALE);
     const store = await cookies();
