@@ -530,6 +530,8 @@
     "onlyTouched": "Alleen wat je invult gaat mee. Een leeg veld wordt niet als nul bewaard.",
     "outsideBands": "buiten de banden",
     "handLengths": "handlengtes",
+    "shiftedTitle": "Wat is verschoven op {date}",
+    "shiftedIntro": "Tegen de meting ervoor onder hetzelfde protocol, gesorteerd op hoe ver elke meting over de schaal van haar eigen regel bewoog. De open stip is de vorige meting. De banden zijn die van vandaag.",
     "saving": "Opslaan...",
     "nothingEntered": "Nog niets ingevuld",
     "measurements": "{count, plural, one {# meting} other {# metingen}}",

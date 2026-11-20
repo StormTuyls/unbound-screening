@@ -530,6 +530,8 @@
     "onlyTouched": "Only what you fill in is saved. An empty field is not stored as zero.",
     "outsideBands": "outside the bands",
     "handLengths": "hand lengths",
+    "shiftedTitle": "What shifted on {date}",
+    "shiftedIntro": "Against the previous measurement under the same protocol, sorted by how far each moved across the scale of its own rule. The open dot is the previous measurement. The bands are today's.",
     "saving": "Saving...",
     "nothingEntered": "Nothing entered yet",
     "measurements": "{count, plural, one {# measurement} other {# measurements}}",

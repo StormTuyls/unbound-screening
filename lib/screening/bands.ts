@@ -159,3 +159,31 @@ export function validateBands(
 
   return errors;
 }
+
+/**
+ * Het bereik dat de tekening beslaat.
+ *
+ * De eindbanden zijn open ("alles onder 75", "alles vanaf 85") en hebben dus
+ * geen rand om op te tekenen. Die krijgen een marge van een kwart van het
+ * eindige bereik, zodat ze zichtbaar doorlopen zonder een grens te suggereren
+ * die er niet is. Een waarde buiten alle banden rekt het bereik op in plaats
+ * van tegen de rand geplakt te worden: een meting die er ver naast zit hoort er
+ * ver naast te staan.
+ */
+export function scaleOf(
+  bands: ReadonlyArray<{ gte?: number; lt?: number }>,
+  values: readonly number[] = [],
+): [number, number] {
+  const edges = bands.flatMap((b) => [b.gte, b.lt].filter((n): n is number => n !== undefined));
+  if (edges.length === 0) return [0, 1];
+  let lo = Math.min(...edges);
+  let hi = Math.max(...edges);
+  const pad = (hi - lo || Math.abs(lo) || 1) * 0.25;
+  lo -= pad;
+  hi += pad;
+  for (const v of values) {
+    if (v < lo) lo = v - pad * 0.5;
+    if (v > hi) hi = v + pad * 0.5;
+  }
+  return hi > lo ? [lo, hi] : [lo - 1, hi + 1];
+}

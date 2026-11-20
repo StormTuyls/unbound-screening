@@ -3,8 +3,17 @@ import Link from "next/link";
 import { getLocale, getTranslations } from "next-intl/server";
 import { checkCoach, isUuid } from "@/lib/review/access";
 import { getAthleteProfile } from "@/lib/db/athletes";
-import { getTimelineEvents, getTrends, listSessions } from "@/lib/db/screening";
+import {
+  getAthletePopulation,
+  getLibrary,
+  getTimelineEvents,
+  getTrends,
+  listSessions,
+} from "@/lib/db/screening";
 import { MetricTrend } from "@/components/coach/MetricTrend";
+import { BandStrip } from "@/components/report/BandStrip";
+import { shiftsOn } from "@/lib/screening/shift";
+import { unitSuffix } from "@/lib/screening/units";
 
 export async function generateMetadata() {
   const t = await getTranslations("titles");
@@ -37,13 +46,30 @@ export default async function ScreeningTrendPage({
   }
   if (access.kind !== "coach") notFound();
 
-  const [athlete, trends, sessions, events] = await Promise.all([
+  const today = new Date().toISOString().slice(0, 10);
+  const [athlete, trends, sessions, events, population] = await Promise.all([
     getAthleteProfile(athleteId),
     getTrends(athleteId, { id: access.coach.id }),
     listSessions(athleteId, { id: access.coach.id }),
     getTimelineEvents(athleteId),
+    getAthletePopulation(athleteId, today),
   ]);
   if (!athlete) notFound();
+
+  // De banden van vandaag, net als op het invoerscherm: dit blok zegt waar een
+  // meting nu staat, niet hoe ze op de meetdag beoordeeld werd. Dat laatste
+  // staat in het bevroren rapport.
+  const library = population ? await getLibrary(population) : [];
+  const bandsByMetric = new Map(
+    library.flatMap((item) =>
+      item.rule?.classificationEnabled ? [[item.metricKey, item.rule.bands] as const] : [],
+    ),
+  );
+  const latest = trends.flatMap((m) => m.points.map((p) => p.date)).sort().at(-1) ?? null;
+  const shifts = latest
+    ? shiftsOn(latest, trends, (key) => bandsByMetric.get(key) ?? null).slice(0, 5)
+    : [];
+  const trendByKey = new Map(trends.map((m) => [m.metricKey, m]));
 
   const t = await getTranslations("screening");
   const titles = await getTranslations("titles");
@@ -91,6 +117,52 @@ export default async function ScreeningTrendPage({
           {titles("intakeFile")}
         </Link>
       </header>
+
+      {/* Eerst wat er veranderd is, dan alles. Bij vijftig metingen is de vraag
+          na een screening niet "hoe staat alles", maar "wat is er bewogen". */}
+      {shifts.length > 0 && latest && (
+        <section className="mb-10">
+          <h2 className="text-base font-semibold">{t("shiftedTitle", { date: latest })}</h2>
+          <p className="mt-1 max-w-prose text-xs text-ink-muted">{t("shiftedIntro")}</p>
+          <ul className="mt-3 divide-y divide-rule border-t border-hairline">
+            {shifts.map((shift) => {
+              const metric = trendByKey.get(shift.metricKey)!;
+              const bands = bandsByMetric.get(shift.metricKey)!;
+              const letter = (side: string) =>
+                side === "left" ? t("left").slice(0, 1).toUpperCase()
+                  : side === "right" ? t("right").slice(0, 1).toUpperCase()
+                    : "";
+              return (
+                <li
+                  key={shift.metricKey}
+                  className="grid gap-x-6 gap-y-2 py-3 sm:grid-cols-[minmax(0,1fr)_14rem] sm:items-center"
+                >
+                  <div className="min-w-0">
+                    <span className="block text-sm font-medium">{name(metric)}</span>
+                    {shift.sides.map((side) => (
+                      <span key={side.side} className="block text-xs text-ink-muted tabular-nums">
+                        {letter(side.side) && `${letter(side.side)} `}
+                        {side.previous.toFixed(metric.decimals)} → {side.value.toFixed(metric.decimals)}
+                        {unitSuffix(metric.unit)} ·{" "}
+                        {side.band ? side.band.status.replace(/_/g, " ") : t("noBand")}
+                      </span>
+                    ))}
+                  </div>
+                  <BandStrip
+                    bands={bands.map((band) => ({ ...band, score: band.score ?? null }))}
+                    markers={shift.sides.map((side) => ({
+                      value: side.value,
+                      label: letter(side.side),
+                      previous: side.previous,
+                    }))}
+                    className="w-full"
+                  />
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
 
       {trends.length === 0 ? (
         <p className="text-sm text-ink-faint">{t("noTrend")}</p>
