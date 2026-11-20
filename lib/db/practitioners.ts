@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
-import { appDb } from "@/lib/supabase/service";
+import { query, queryOne } from "@/lib/db/sql";
 
 /**
  * Het team van de praktijk: wie er behandelt, en wie er niet meer.
@@ -133,18 +133,11 @@ export function blockedTeamChange(input: {
  * e-mailadressen, en een controle op rollen heeft daar niets aan.
  */
 export async function listTeamRoles(): Promise<TeamRoleState[]> {
-  const { data, error } = await appDb()
-    .from("profiles")
-    .select("id, role, archived_at")
-    .in("role", ["coach", "admin"]);
-
-  if (error) throw new Error(`team ophalen mislukt: ${error.message}`);
-
-  return (data ?? []).map((row) => ({
-    id: row.id as string,
-    role: row.role as PractitionerRole,
-    archivedAt: (row.archived_at as string | null) ?? null,
-  }));
+  const rows = await query<{ id: string; role: PractitionerRole; archived_at: string | null }>(
+    `select id, role, to_json(archived_at) #>> '{}' as archived_at
+       from public.profiles where role in ('coach', 'admin')`,
+  );
+  return rows.map((row) => ({ id: row.id, role: row.role, archivedAt: row.archived_at }));
 }
 
 /**
@@ -163,9 +156,9 @@ export function generatePassword(): string {
 /**
  * Een client met de admin-API van Auth erbij.
  *
- * appDb() volstaat niet: die praat met PostgREST, en gebruikers leven in
- * `auth.users`, waar geen enkele applicatierol bij mag. De service role heeft
- * daar wel een eigen API voor.
+ * De databankverbinding volstaat niet: gebruikers leven in `auth.users`, waar
+ * geen enkele applicatierol bij mag. De service role heeft daar wel een eigen
+ * API voor. shortcut: verdwijnt met Supabase Auth in fase 5c.
  */
 function authAdmin() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -187,39 +180,41 @@ function authAdmin() {
  * één lijstoproep goedkoper dan een kolom die uit de pas kan lopen.
  */
 export async function listTeam(): Promise<TeamMember[]> {
-  const db = appDb();
-
-  const [profiles, athletes, users] = await Promise.all([
-    db
-      .from("profiles")
-      .select("id, full_name, role, practitioner_kind, archived_at")
-      .in("role", ["coach", "admin"])
-      .order("full_name"),
-    db.from("athletes").select("practitioner_id").is("deleted_at", null),
+  // Het aantal atleten per behandelaar in SQL, in plaats van elke atleetrij
+  // op te halen om ze in TypeScript te tellen.
+  const [profiles, users] = await Promise.all([
+    query<{
+      id: string;
+      full_name: string | null;
+      role: TeamMember["role"];
+      practitioner_kind: PractitionerKind | null;
+      archived_at: string | null;
+      athletes: number;
+    }>(
+      `select p.id, p.full_name, p.role, p.practitioner_kind,
+              to_json(p.archived_at) #>> '{}' as archived_at,
+              (select count(*)::int from public.athletes a
+                where a.practitioner_id = p.id and a.deleted_at is null) as athletes
+         from public.profiles p
+        where p.role in ('coach', 'admin')
+        order by p.full_name`,
+    ),
     authAdmin().auth.admin.listUsers({ perPage: 200 }),
   ]);
-
-  if (profiles.error) throw new Error(`team ophalen mislukt: ${profiles.error.message}`);
-
-  const counts = new Map<string, number>();
-  for (const row of athletes.data ?? []) {
-    const id = row.practitioner_id as string | null;
-    if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
-  }
 
   const emails = new Map<string, string>();
   for (const user of users.data?.users ?? []) {
     if (user.email) emails.set(user.id, user.email);
   }
 
-  return (profiles.data ?? []).map((row) => ({
-    id: row.id as string,
-    fullName: (row.full_name as string | null) ?? null,
-    email: emails.get(row.id as string) ?? null,
-    role: row.role as TeamMember["role"],
-    kind: (row.practitioner_kind as PractitionerKind | null) ?? null,
-    archivedAt: (row.archived_at as string | null) ?? null,
-    athletes: counts.get(row.id as string) ?? 0,
+  return profiles.map((row) => ({
+    id: row.id,
+    fullName: row.full_name,
+    email: emails.get(row.id) ?? null,
+    role: row.role,
+    kind: row.practitioner_kind,
+    archivedAt: row.archived_at,
+    athletes: row.athletes,
   }));
 }
 
@@ -252,22 +247,24 @@ async function findAccountByEmail(email: string): Promise<ExistingAccount | null
   const match = users.data?.users.find((user) => user.email?.toLowerCase() === wanted);
   if (!match) return null;
 
-  const db = appDb();
-  const [profile, athlete] = await Promise.all([
-    db.from("profiles").select("full_name, role").eq("id", match.id).maybeSingle(),
-    db
-      .from("athletes")
-      .select("id")
-      .eq("profile_id", match.id)
-      .is("deleted_at", null)
-      .maybeSingle(),
-  ]);
+  const row = await queryOne<{
+    full_name: string | null;
+    role: ExistingAccount["role"] | null;
+    athlete: boolean;
+  }>(
+    `select p.full_name, p.role,
+            exists (select 1 from public.athletes a
+                     where a.profile_id = $1 and a.deleted_at is null) as athlete
+       from (select $1::uuid as id) u
+       left join public.profiles p on p.id = u.id`,
+    [match.id],
+  );
 
   return {
     id: match.id,
-    fullName: (profile.data?.full_name as string | null) ?? null,
-    role: (profile.data?.role as ExistingAccount["role"]) ?? "athlete",
-    athlete: athlete.data !== null,
+    fullName: row?.full_name ?? null,
+    role: row?.role ?? "athlete",
+    athlete: row?.athlete ?? false,
   };
 }
 
@@ -293,26 +290,18 @@ export async function promoteToPractitioner(input: {
   kind: PractitionerKind;
   role: PractitionerRole;
 }): Promise<{ ok: boolean; error?: string }> {
-  const db = appDb();
-
-  const { data: existing } = await db
-    .from("profiles")
-    .select("id, role")
-    .eq("id", input.id)
-    .maybeSingle();
-
-  if (!existing) return { ok: false, error: "That account no longer exists." };
+  // Bijwerken en terugvragen in één statement: bestaat het profiel niet, dan
+  // komt er niets terug en is er ook niets gewijzigd.
 
   // De naam blijft van hem. De admin typte er een in het aanmaakformulier, maar
   // dit account heeft er al een die de persoon zelf heeft opgegeven, en die
   // overschrijven op grond van een formulier dat voor iemand anders bedoeld was
   // is de verkeerde kant op.
-  const { error } = await db
-    .from("profiles")
-    .update({ role: input.role, practitioner_kind: input.kind })
-    .eq("id", input.id);
-
-  if (error) throw new Error(`promoveren mislukt: ${error.message}`);
+  const updated = await queryOne(
+    "update public.profiles set role = $2, practitioner_kind = $3 where id = $1 returning id",
+    [input.id, input.role, input.kind],
+  );
+  if (!updated) return { ok: false, error: "That account no longer exists." };
   return { ok: true };
 }
 
@@ -369,19 +358,20 @@ export async function createPractitioner(input: {
 
   const userId = created.data.user.id;
 
-  const { error } = await appDb().from("profiles").upsert({
-    id: userId,
-    role: input.role,
-    full_name: input.fullName,
-    locale: "nl",
-    practitioner_kind: input.kind,
-  });
-
-  if (error) {
+  try {
+    await query(
+      `insert into public.profiles (id, role, full_name, locale, practitioner_kind)
+       values ($1, $2, $3, 'nl', $4)
+       on conflict (id) do update
+         set role = excluded.role, full_name = excluded.full_name,
+             locale = excluded.locale, practitioner_kind = excluded.practitioner_kind`,
+      [userId, input.role, input.fullName, input.kind],
+    );
+  } catch (error) {
     // De gebruiker bestaat nu wel en het profiel niet, en dan kan hij inloggen
     // zonder iets te zien. Terugdraaien is hier beter dan een half account.
     await admin.auth.admin.deleteUser(userId);
-    return { ok: false, error: `profiel opslaan mislukt: ${error.message}` };
+    return { ok: false, error: `profiel opslaan mislukt: ${(error as Error).message}` };
   }
 
   return { ok: true, id: userId, password };
@@ -409,6 +399,7 @@ export async function updatePractitioner(input: {
   role?: PractitionerRole;
   archived?: boolean;
 }): Promise<UpdateResult> {
+  // De kolomnamen komen uit deze code, nooit uit invoer.
   const patch: Record<string, unknown> = {};
   if (input.kind !== undefined) patch.practitioner_kind = input.kind;
   if (input.role !== undefined) patch.role = input.role;
@@ -416,7 +407,8 @@ export async function updatePractitioner(input: {
     patch.archived_at = input.archived ? new Date().toISOString() : null;
   }
 
-  if (Object.keys(patch).length === 0) return { ok: true };
+  const columns = Object.keys(patch);
+  if (columns.length === 0) return { ok: true };
 
   // Alleen ophalen wanneer er iets verandert dat de praktijk kan buitensluiten.
   // Een vakgebied wijzigen raakt de beheerders niet, en dat is de veruit meest
@@ -430,13 +422,12 @@ export async function updatePractitioner(input: {
     if (blocked) return { ok: false, error: blocked };
   }
 
-  const { error } = await appDb()
-    .from("profiles")
-    .update(patch)
-    .eq("id", input.id)
-    .in("role", ["coach", "admin"]);
-
-  if (error) throw new Error(`behandelaar bijwerken mislukt: ${error.message}`);
+  await query(
+    `update public.profiles
+        set ${columns.map((column, i) => `${column} = $${i + 2}`).join(", ")}
+      where id = $1 and role in ('coach', 'admin')`,
+    [input.id, ...columns.map((column) => patch[column])],
+  );
   return { ok: true };
 }
 
@@ -458,23 +449,17 @@ export async function setAthletePractitioner(input: {
   practitionerId: string | null;
 }): Promise<{ ok: boolean; error?: string }> {
   if (input.practitionerId !== null) {
-    const { data } = await appDb()
-      .from("profiles")
-      .select("id")
-      .eq("id", input.practitionerId)
-      .in("role", ["coach", "admin"])
-      .not("practitioner_kind", "is", null)
-      .maybeSingle();
-
-    if (!data) return { ok: false, error: "unknown practitioner" };
+    const known = await queryOne(
+      `select 1 from public.profiles
+        where id = $1 and role in ('coach', 'admin') and practitioner_kind is not null`,
+      [input.practitionerId],
+    );
+    if (!known) return { ok: false, error: "unknown practitioner" };
   }
 
-  const { error } = await appDb()
-    .from("athletes")
-    .update({ practitioner_id: input.practitionerId })
-    .eq("id", input.athleteId)
-    .is("deleted_at", null);
-
-  if (error) throw new Error(`toewijzing opslaan mislukt: ${error.message}`);
+  await query(
+    "update public.athletes set practitioner_id = $2 where id = $1 and deleted_at is null",
+    [input.athleteId, input.practitionerId],
+  );
   return { ok: true };
 }

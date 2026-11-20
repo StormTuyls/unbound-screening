@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { appDb } from "@/lib/supabase/service";
+import { transaction } from "@/lib/db/sql";
 import { preConsentUntil } from "@/lib/intake/retention";
 import type { Locale } from "@/lib/i18n/locale";
 
@@ -141,45 +141,39 @@ export async function inviteAthlete(input: {
     options: { redirectTo },
   });
 
-  const db = appDb();
-
-  const { error: profileError } = await db.from("profiles").upsert(
-    { id: userId, role: "athlete", full_name: input.fullName, locale: input.locale },
-    { onConflict: "id" },
-  );
-
-  if (profileError) {
-    await admin.auth.admin.deleteUser(userId);
-    return { ok: false, error: `profiel opslaan mislukt: ${profileError.message}` };
-  }
-
-  const { data: athlete, error } = await db
-    .from("athletes")
-    .insert({
-      profile_id: userId,
-      full_name: input.fullName,
-      email,
-      locale: input.locale,
-      practitioner_id: input.practitionerId,
-      retention_mode: "until_date",
+  // Profiel en atleetrij samen. Mislukt de tweede, dan rolt de eerste mee
+  // terug, en hoeft alleen het account nog weg.
+  let athleteId: string;
+  try {
+    athleteId = await transaction(async (run) => {
+      await run(
+        `insert into public.profiles (id, role, full_name, locale)
+         values ($1, 'athlete', $2, $3)
+         on conflict (id) do update
+           set role = 'athlete', full_name = excluded.full_name, locale = excluded.locale`,
+        [userId, input.fullName, input.locale],
+      );
       // Dezelfde voorlopige termijn als bij zelfaanmelding. Geeft hij nooit
       // consent, dan ruimt de retentiejob dit op: een uitnodiging die niemand
       // aanneemt hoort niet als dossier te blijven staan.
-      retention_until: preConsentUntil(),
-    })
-    .select("id")
-    .single();
-
-  if (error || !athlete) {
-    await db.from("profiles").delete().eq("id", userId);
+      const [athlete] = await run<{ id: string }>(
+        `insert into public.athletes
+           (profile_id, full_name, email, locale, practitioner_id, retention_mode, retention_until)
+         values ($1, $2, $3, $4, $5, 'until_date', $6)
+         returning id`,
+        [userId, input.fullName, email, input.locale, input.practitionerId, preConsentUntil()],
+      );
+      return athlete.id;
+    });
+  } catch (error) {
     await admin.auth.admin.deleteUser(userId);
-    return { ok: false, error: `atleet aanmaken mislukt: ${error?.message}` };
+    return { ok: false, error: `uitnodigen mislukt: ${(error as Error).message}` };
   }
 
   return {
     ok: true,
     invite: {
-      athleteId: athlete.id as string,
+      athleteId,
       userId,
       link: callbackLink(input.origin, generated.data?.properties?.hashed_token),
       mailed,
