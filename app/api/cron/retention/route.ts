@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { appDb } from "@/lib/supabase/service";
+import { query } from "@/lib/db/sql";
 import { enqueuePurge, type PurgeReason } from "@/lib/purge/jobs";
 import { drainPurgeJobs } from "@/lib/purge/purge";
 import { preConsentUntil } from "@/lib/intake/retention";
@@ -76,24 +76,22 @@ function authorized(request: Request): boolean {
 async function due(): Promise<Due[]> {
   const today = new Date().toISOString().slice(0, 10);
 
-  const { data, error } = await appDb()
-    .from("athletes")
-    .select("id, retention_until, retention_mode, consents(id)")
-    .eq("retention_mode", "until_date")
-    .lt("retention_until", today)
-    .is("deleted_at", null);
-
-  if (error) throw new Error(`vervallen dossiers opvragen mislukt: ${error.message}`);
+  const data = await query<{ id: string; retention_until: string; consented: boolean }>(
+    `select a.id, a.retention_until,
+            exists (select 1 from public.consents c where c.athlete_id = a.id) as consented
+       from public.athletes a
+      where a.retention_mode = 'until_date' and a.retention_until < $1 and a.deleted_at is null`,
+    [today],
+  );
 
   // Zonder toestemming op accountniveau is de termijn de voorlopige van 30
   // dagen uit lib/intake/retention.ts, en dan is dit een gestrande aanmelding.
   const cutoff = preConsentUntil();
 
-  return (data ?? []).map((row) => {
-    const consents = (row.consents ?? []) as unknown[];
-    const preConsent = consents.length === 0 && String(row.retention_until) <= cutoff;
+  return data.map((row) => {
+    const preConsent = !row.consented && row.retention_until <= cutoff;
     return {
-      athleteId: row.id as string,
+      athleteId: row.id,
       reason: (preConsent ? "pre_consent_expired" : "retention_due") as PurgeReason,
     };
   });

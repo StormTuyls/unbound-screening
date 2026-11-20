@@ -1,6 +1,6 @@
 import { notion } from "@/lib/notion/client";
 import { TRAINABILITY } from "@/lib/notion/schema";
-import { appDb } from "@/lib/supabase/service";
+import { queryOne } from "@/lib/db/sql";
 import { syncDossier } from "@/lib/db/dossier";
 import { ensureFrozenReport } from "@/lib/report/freeze";
 import { markdownToBlocks } from "@/lib/notion/blocks";
@@ -224,13 +224,18 @@ export async function syncIntakeToNotion(intakeId: string): Promise<{
   const athletesDb = process.env.NOTION_ATHLETES_DB;
   if (!athletesDb) throw new Error("NOTION_ATHLETES_DB ontbreekt");
 
-  const { data: intake, error } = await appDb()
-    .from("intakes")
-    .select("id, status, submitted_at, locale")
-    .eq("id", intakeId)
-    .single();
-
-  if (error || !intake) throw new Error(`intake niet gevonden: ${error?.message}`);
+  // submitted_at als de JSON-tekst van PostgREST: zo staat het al in Notion.
+  const intake = await queryOne<{
+    id: string;
+    status: string;
+    submitted_at: string | null;
+    locale: string;
+  }>(
+    `select id, status, locale, to_json(submitted_at) #>> '{}' as submitted_at
+       from public.intakes where id = $1`,
+    [intakeId],
+  );
+  if (!intake) throw new Error(`intake niet gevonden: ${intakeId}`);
 
   const state = await syncDossier(intakeId, intake.locale as "nl" | "en");
 
@@ -260,7 +265,7 @@ export async function syncIntakeToNotion(intakeId: string): Promise<{
     medicalValues,
     sharingAllowed,
     intakeId,
-    submittedAt: intake.submitted_at as string | null,
+    submittedAt: intake.submitted_at,
     conflicts: state.completeness.conflicts,
     dossierUrl,
     status:

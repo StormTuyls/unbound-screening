@@ -1,4 +1,4 @@
-import { appDb } from "@/lib/supabase/service";
+import { query } from "@/lib/db/sql";
 
 /**
  * Audit-spoor voor wat triggers niet kunnen zien.
@@ -31,21 +31,21 @@ export async function logAudit(input: {
   entityId: string | null;
   detail?: Record<string, unknown>;
 }): Promise<void> {
-  const { error } = await appDb()
-    .from("audit_log")
-    .insert({
-      actor_id: input.actorId ?? null,
-      actor_kind: input.actorKind,
-      action: input.action,
-      entity_schema: input.entitySchema,
-      entity_table: input.entityTable,
-      entity_id: input.entityId,
-      detail: input.detail ?? {},
-    });
-
   // Een mislukte audit-registratie mag niet stil blijven: dan verliest het
-  // spoor zijn waarde precies wanneer het nodig is.
-  if (error) {
-    throw new Error(`audit-log schrijven mislukt: ${error.message}`);
-  }
+  // spoor zijn waarde precies wanneer het nodig is. query gooit, en dat laten
+  // we doorgaan.
+  await query(
+    `insert into public.audit_log
+       (actor_id, actor_kind, action, entity_schema, entity_table, entity_id, detail)
+     values ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+    [
+      input.actorId ?? null,
+      input.actorKind,
+      input.action,
+      input.entitySchema,
+      input.entityTable,
+      input.entityId,
+      JSON.stringify(input.detail ?? {}),
+    ],
+  );
 }

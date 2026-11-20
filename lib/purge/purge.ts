@@ -1,4 +1,4 @@
-import { appDb } from "@/lib/supabase/service";
+import { query, queryOne } from "@/lib/db/sql";
 import { purgeAthleteRows } from "@/lib/purge/db";
 import { purgeStorage } from "@/lib/purge/storage";
 import { purgeNotion, notionErrorIsHarmless } from "@/lib/purge/notion";
@@ -61,23 +61,18 @@ function noteError(result: PurgeJobResult, step: PurgeStep, error: unknown): voi
 
 /** Wat er te verwijderen valt, uit de administratie die er nu nog is. */
 async function makePlan(athleteId: string): Promise<PurgeManifest> {
-  const { data: intakes, error } = await appDb()
-    .from("intakes")
-    .select("id")
-    .eq("athlete_id", athleteId);
-
-  if (error) throw new Error(`intakes opvragen mislukt: ${error.message}`);
-
-  const { data: athlete } = await appDb()
-    .from("athletes")
-    .select("profile_id")
-    .eq("id", athleteId)
-    .maybeSingle();
+  const [intakes, athlete] = await Promise.all([
+    query<{ id: string }>("select id from public.intakes where athlete_id = $1", [athleteId]),
+    queryOne<{ profile_id: string | null }>(
+      "select profile_id from public.athletes where id = $1",
+      [athleteId],
+    ),
+  ]);
 
   return {
     athlete_id: athleteId,
-    profile_id: (athlete?.profile_id as string | null) ?? null,
-    intake_ids: (intakes ?? []).map((row) => row.id as string),
+    profile_id: athlete?.profile_id ?? null,
+    intake_ids: intakes.map((row) => row.id),
     document_ids: [],
     screening_session_ids: [],
     storage_paths: [],

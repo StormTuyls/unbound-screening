@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { apiMessages } from "@/lib/i18n/server";
 import { handleError } from "@/lib/http";
 import { isUuid, requireCoach } from "@/lib/review/access";
-import { appDb } from "@/lib/supabase/service";
+import { queryOne } from "@/lib/db/sql";
 import { enqueuePurge } from "@/lib/purge/jobs";
 import { runPurgeJob } from "@/lib/purge/purge";
 
@@ -39,11 +39,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: t("athleteNotFound") }, { status: 404 });
     }
 
-    const { data: athlete } = await appDb()
-      .from("athletes")
-      .select("id, full_name")
-      .eq("id", body.athleteId)
-      .maybeSingle();
+    const athlete = await queryOne<{ id: string; full_name: string | null }>(
+      "select id, full_name from public.athletes where id = $1",
+      [body.athleteId],
+    );
 
     if (!athlete) {
       return NextResponse.json({ error: t("athleteNotFound") }, { status: 404 });
@@ -52,7 +51,7 @@ export async function POST(request: Request) {
     // De tweede sleutel, en de server controleert hem ook. Zou alleen de
     // interface dat doen, dan is een verkeerd gerichte fetch genoeg om de
     // verkeerde atleet te wissen.
-    const expected = (athlete.full_name as string | null)?.trim();
+    const expected = athlete.full_name?.trim();
     if (expected) {
       if ((body.confirmName ?? "").trim().toLowerCase() !== expected.toLowerCase()) {
         return NextResponse.json(
