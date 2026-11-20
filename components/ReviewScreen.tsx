@@ -16,9 +16,10 @@ import { FieldEditor } from "@/components/review/FieldEditor";
  *
  * Wat dit scherm moet oplossen: de coach wil in dertig seconden weten of dit
  * dossier bruikbaar is en waar hij moet kijken. Daarom staat de klinische
- * samenvatting bovenaan, staan tegenstrijdigheden erboven in plaats van ertussen,
- * en is bij elk veld de herkomst één klik weg: welk document, welke pagina, welk
- * letterlijk citaat.
+ * samenvatting bovenaan, staan tegenstrijdigheden erboven in plaats van ertussen
+ * en zijn ze daar ook op te lossen, en staat bij elk veld uit een document de
+ * herkomst erbij: welk document, welke pagina, welk letterlijk citaat. Niet
+ * weggeklapt: dit is het scherm waarop je beslist of je een waarde gelooft.
  *
  * De samenvatting is expliciet gelabeld als gegenereerd. Dat is geen
  * disclaimer-ritueel: de klant vroeg om onderscheid tussen wat er staat en wat
@@ -223,7 +224,7 @@ export function ReviewScreen({ intakeId }: { intakeId: string }) {
    * wordt, uit het winnende voorstel. Zou de client die waarde meesturen, dan
    * bepaalt de client wat er afgetekend wordt.
    */
-  async function saveField(fieldKey: string, value?: string) {
+  async function saveField(fieldKey: string, value?: unknown) {
     setSaving(true);
     setFieldError(null);
     try {
@@ -316,6 +317,39 @@ export function ReviewScreen({ intakeId }: { intakeId: string }) {
   // een slechtere uitleg dan geen knop.
   const locked = data.status === "approved";
 
+  // Waar een waarde vandaan komt, in woorden: het bestand en niet zijn id.
+  const fileName = new Map(data.documents.map((d) => [d.id, d.originalFilename]));
+  const source = (p: {
+    sourceDocumentId: string | null;
+    sourcePage: number | null;
+    sourceQuote: string | null;
+    quoteVerified?: boolean;
+  }) =>
+    [
+      p.sourceDocumentId ? (fileName.get(p.sourceDocumentId) ?? t("fromDocument")) : null,
+      p.sourcePage ? t("page", { page: p.sourcePage }) : null,
+      p.sourceQuote && p.quoteVerified !== undefined
+        ? p.quoteVerified
+          ? t("badgeQuoteVerified")
+          : t("badgeQuoteNotFound")
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" · ");
+  // Het voorstel achter de waarde die nu staat.
+  const winnerOf = (field: Field) =>
+    field.proposals.find(
+      (p) =>
+        show(p.value, locale, field.dataType, field.key) ===
+        show(field.value, locale, field.dataType, field.key),
+    );
+  const quote = (text: string | null) =>
+    text && (
+      <span className="mt-1 block border-l-2 border-hairline pl-2.5 text-sm text-ink">
+        &ldquo;{text.slice(0, 200)}&rdquo;
+      </span>
+    );
+
   // Verplichte velden die gevraagd zijn en geen antwoord kregen. Niet de velden
   // die voor de behandelaar bedoeld zijn: die zijn met opzet aan hem gelaten en
   // zijn geen gat dat iemand over het hoofd zag.
@@ -386,28 +420,90 @@ export function ReviewScreen({ intakeId }: { intakeId: string }) {
               {t("conflictsBody")}
             </p>
             <ul className="mt-3 space-y-3 text-sm">
-              {conflicting.map((field) => (
-                <li key={field.key}>
-                  <span className="font-medium">{field.label}</span>
-                  <div className="mt-1 space-y-1 text-xs">
-                    <div>
-                      {t("chosenCandidate")} <strong>{show(field.value, locale, field.dataType, field.key)}</strong>
-                    </div>
-                    {field.conflicts.map((rival, index) => (
-                      <div key={index} className="opacity-80">
-                        {t("alsoFound")} <strong>{show(rival.value, locale, field.dataType, field.key)}</strong>
-                        {rival.sourceQuote && (
-                          <span className="opacity-70">
-                            {" "}
-                            uit &ldquo;{rival.sourceQuote.slice(0, 90)}&rdquo;
-                            {rival.sourcePage && ` (p${rival.sourcePage})`}
-                          </span>
+              {conflicting.map((field) => {
+                const winner = winnerOf(field);
+                const candidates = [
+                  {
+                    value: field.value,
+                    sourceDocumentId: winner?.sourceDocumentId ?? null,
+                    sourcePage: winner?.sourcePage ?? null,
+                    sourceQuote: winner?.sourceQuote ?? null,
+                    quoteVerified: winner?.quoteVerified,
+                    current: true,
+                  },
+                  // Een rivaal draagt zijn verificatie niet mee; het voorstel erachter wel.
+                  ...field.conflicts.map((rival) => ({
+                    ...rival,
+                    quoteVerified: field.proposals.find(
+                      (p) =>
+                        p.sourceDocumentId === rival.sourceDocumentId &&
+                        p.sourceQuote === rival.sourceQuote,
+                    )?.quoteVerified,
+                    current: false,
+                  })),
+                ];
+                return (
+                  <li key={field.key} className="rounded-md border border-hairline bg-surface">
+                    <p className="border-b border-hairline px-3.5 py-2 text-label text-ink-muted uppercase">
+                      {field.label}
+                    </p>
+                    {/* Geen "gekozen" en "ook gevonden": dat het systeem er een
+                        bovenaan zet is geen keuze, en zo mag het niet lezen. */}
+                    {candidates.map((candidate, index) => (
+                      <div
+                        key={index}
+                        className="flex flex-wrap items-start justify-between gap-3 border-b border-rule px-3.5 py-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="font-semibold">
+                            {show(candidate.value, locale, field.dataType, field.key)}
+                          </p>
+                          <p className="mt-0.5 text-xs text-ink-muted">{source(candidate)}</p>
+                          {quote(candidate.sourceQuote)}
+                        </div>
+                        {!locked && (
+                          <button
+                            onClick={() =>
+                              candidate.current
+                                ? saveField(field.key)
+                                : saveField(field.key, candidate.value)
+                            }
+                            disabled={saving}
+                            className="inline-flex min-h-11 items-center rounded-md px-3 text-xs ring-1 ring-hairline ring-inset transition-colors hover:bg-canvas disabled:opacity-40"
+                          >
+                            {t("keepThis")}
+                          </button>
                         )}
                       </div>
                     ))}
-                  </div>
-                </li>
-              ))}
+                    {!locked && (
+                      <div className="px-3.5 py-3">
+                        <button
+                          onClick={() => {
+                            setFieldError(null);
+                            setEditing(editing === field.key ? null : field.key);
+                          }}
+                          className="inline-flex min-h-11 items-center rounded-md px-3 text-xs ring-1 ring-hairline ring-inset transition-colors hover:bg-canvas disabled:opacity-40"
+                        >
+                          {editing === field.key ? t("close") : t("fillYourself")}
+                        </button>
+                        {editing === field.key && (
+                          <FieldEditor
+                            field={field}
+                            busy={saving}
+                            error={fieldError}
+                            onSave={(value) => saveField(field.key, value)}
+                            onCancel={() => {
+                              setEditing(null);
+                              setFieldError(null);
+                            }}
+                          />
+                        )}
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           </section>
         )}
@@ -503,6 +599,7 @@ export function ReviewScreen({ intakeId }: { intakeId: string }) {
               {section.fields.map((field) => {
                 const isOpen = open.has(field.key);
                 const missing = field.status === "missing";
+                const winner = missing ? undefined : winnerOf(field);
                 // Vrije tekst krijgt een eigen regel; korte waarden blijven in de
                 // kolom staan, want daar leest een rij per veld het snelst.
                 const longValue = field.dataType === "long_text" && !missing;
@@ -533,7 +630,7 @@ export function ReviewScreen({ intakeId }: { intakeId: string }) {
                           {show(field.value, locale, field.dataType, field.key)}
                         </span>
                       )}
-                      <span className="flex flex-wrap items-baseline gap-3">
+                      <span className="flex flex-wrap items-center gap-2">
                       {!missing &&
                         (() => {
                           const { text, style } = badge(field, t);
@@ -545,10 +642,10 @@ export function ReviewScreen({ intakeId }: { intakeId: string }) {
                             </span>
                           );
                         })()}
-                      {field.proposals.length > 0 && (
+                      {field.proposals.length > 1 && (
                         <button
                           onClick={() => toggle(field.key)}
-                          className="text-[10px] underline opacity-50"
+                          className="inline-flex min-h-11 items-center rounded-md px-3 text-xs ring-1 ring-hairline ring-inset transition-colors hover:bg-canvas disabled:opacity-40"
                         >
                           {isOpen ? t("provenanceHide") : t("provenance")}
                         </button>
@@ -560,7 +657,7 @@ export function ReviewScreen({ intakeId }: { intakeId: string }) {
                           // Aftekenen zonder de waarde opnieuw in te tikken. Dit is
                           // de meest gebruikte handeling in dit scherm, dus die
                           // hoort niet achter een formulier te zitten.
-                          className="text-[10px] underline opacity-50 disabled:opacity-25"
+                          className="inline-flex min-h-11 items-center rounded-md px-3 text-xs ring-1 ring-hairline ring-inset transition-colors hover:bg-canvas disabled:opacity-40"
                         >
                           {t("confirm")}
                         </button>
@@ -571,7 +668,7 @@ export function ReviewScreen({ intakeId }: { intakeId: string }) {
                             setFieldError(null);
                             setEditing(editing === field.key ? null : field.key);
                           }}
-                          className="text-[10px] underline opacity-50"
+                          className="inline-flex min-h-11 items-center rounded-md px-3 text-xs ring-1 ring-hairline ring-inset transition-colors hover:bg-canvas disabled:opacity-40"
                         >
                           {editing === field.key
                             ? t("close")
@@ -589,7 +686,14 @@ export function ReviewScreen({ intakeId }: { intakeId: string }) {
                       </p>
                     )}
 
-                    {editing === field.key && (
+                    {winner?.sourceDocumentId && (
+                      <p className="mt-1 text-xs text-ink-muted sm:ml-52">
+                        {source(winner)}
+                        {quote(winner.sourceQuote)}
+                      </p>
+                    )}
+
+                    {editing === field.key && field.status !== "conflicting" && (
                       <FieldEditor
                         field={field}
                         busy={saving}
@@ -608,19 +712,14 @@ export function ReviewScreen({ intakeId }: { intakeId: string }) {
                           <li key={proposal.id}>
                             <strong>{show(proposal.value, locale, field.dataType, field.key)}</strong>
                             <span className="opacity-70">
-                              {" "}
-                              · {proposal.proposedBy === "model" ? t("fromDocument") : proposal.proposedBy === "athlete" ? t("fromAthlete") : t("fromCoach")}
-                              {proposal.sourcePage && ` · p${proposal.sourcePage}`}
-                              {proposal.sourceQuote &&
-                                (proposal.quoteVerified
-                                  ? " · citaat geverifieerd"
-                                  : " · citaat niet terugvindbaar")}
+                              {" · "}
+                              {proposal.proposedBy === "model"
+                                ? source(proposal)
+                                : proposal.proposedBy === "athlete"
+                                  ? t("fromAthlete")
+                                  : t("fromCoach")}
                             </span>
-                            {proposal.sourceQuote && (
-                              <div className="italic opacity-60">
-                                &ldquo;{proposal.sourceQuote.slice(0, 200)}&rdquo;
-                              </div>
-                            )}
+                            {proposal.proposedBy !== "model" && quote(proposal.sourceQuote)}
                           </li>
                         ))}
                       </ul>
@@ -715,13 +814,30 @@ export function ReviewScreen({ intakeId }: { intakeId: string }) {
             <div className="flex items-center justify-between gap-4 lg:flex-col lg:items-stretch lg:gap-3">
               <div>
                 <h2 className="text-sm font-medium">{t("approveTitle")}</h2>
-                <p className="mt-1 text-xs opacity-70">
-                  {conflicting.length > 0
-                    ? t("approveBlocked")
-                    : data.submittedAt
-                      ? t("approveBody")
-                      : t("approveNotSubmitted")}
-                </p>
+                <p className="mt-1 text-xs opacity-70">{t("approveBody")}</p>
+                {/* Wat goedkeuren tegenhoudt of aandacht vraagt, en wat al in
+                    orde is. Open verplichte velden blokkeren niet: de coach
+                    kan goedkeuren met gaten, zie hieronder. */}
+                <ul className="mt-2 space-y-1 text-xs">
+                  {[
+                    [data.submittedAt !== null, data.submittedAt ? t("gateSubmitted") : t("approveNotSubmitted")],
+                    [conflicting.length === 0, conflicting.length === 0 ? t("gateNoConflicts") : t("approveBlocked")],
+                    [
+                      data.completeness.requiredFilled === data.completeness.requiredTotal,
+                      data.completeness.requiredFilled === data.completeness.requiredTotal
+                        ? t("gateRequired")
+                        : t("requiredCount", {
+                            filled: data.completeness.requiredFilled,
+                            total: data.completeness.requiredTotal,
+                          }),
+                    ],
+                  ].map(([ok, text]) => (
+                    <li key={String(text)} className={`flex gap-2 ${ok ? "text-ok" : "text-warn"}`}>
+                      <span aria-hidden>{ok ? "✓" : "!"}</span>
+                      {text}
+                    </li>
+                  ))}
+                </ul>
               </div>
               <button
                 onClick={approve}
