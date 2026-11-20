@@ -5,7 +5,7 @@ import { logAudit } from "@/lib/audit";
 import { addProposals, getProposals, syncDossier } from "@/lib/db/dossier";
 import { comparisonKey, validateValue } from "@/lib/dossier/validate";
 import { isIntakeId, requireCoach } from "@/lib/review/access";
-import { appDb } from "@/lib/supabase/service";
+import { queryOne } from "@/lib/db/sql";
 import type { FieldDefinition } from "@/lib/types";
 
 export const maxDuration = 60;
@@ -67,11 +67,10 @@ export async function POST(
       return NextResponse.json({ error: t("intakeNotFound") }, { status: 404 });
     }
 
-    const { data: intake } = await appDb()
-      .from("intakes")
-      .select("id, status, locale")
-      .eq("id", intakeId)
-      .maybeSingle();
+    const intake = await queryOne<{ id: string; status: string; locale: string }>(
+      "select id, status, locale from public.intakes where id = $1",
+      [intakeId],
+    );
 
     if (!intake) {
       return NextResponse.json({ error: t("intakeNotFound") }, { status: 404 });

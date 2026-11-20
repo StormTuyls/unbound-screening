@@ -1,15 +1,9 @@
-import { query } from "@/lib/db/sql";
-import { appDb } from "@/lib/supabase/service";
+import { query, queryOne } from "@/lib/db/sql";
 import { getFieldDefinitions, syncDossier } from "@/lib/db/dossier";
 import { listDocuments, readLatestReport, type DocumentSummary } from "@/lib/db/medical";
 import { logAudit } from "@/lib/audit";
 import { DEFAULT_LOCALE, type Locale } from "@/lib/i18n/locale";
 import { resolveInjuryTimeline, type TimelineEntry } from "@/lib/dossier/timeline";
-import {
-  formatIntakeTitleOrNull,
-  titleFromRow,
-  type BodySide,
-} from "@/lib/intake/title";
 import type { Proposal, ResolvedField } from "@/lib/types";
 
 /**
@@ -112,177 +106,6 @@ export async function getInjuries(intakeId: string): Promise<TimelineEntry[]> {
   return resolveInjuryTimeline(await getInjuryEntries(intakeId), intakeId);
 }
 
-export interface IntakeListRow {
-  id: string;
-  /** Nodig om te groeperen: twee atleten zonder naam zijn niet dezelfde atleet. */
-  athleteId: string;
-  athleteName: string | null;
-  status: string;
-  submittedAt: string | null;
-  /** Voor een draft is er nog geen indiendatum; dan is dit de laatste activiteit. */
-  startedAt: string | null;
-  /**
-   * Waar deze intake over gaat, in een paar woorden.
-   *
-   * Een lijst van "waiting for review · 2026-03-08" is niet te lezen zodra een
-   * atleet er twee heeft: de status is voor elke rij hetzelfde en de datum zegt
-   * niets over de inhoud. De klacht wel.
-   *
-   * Dit is medische inhoud, en dat is een bewuste afweging: het staat alleen op
-   * schermen achter een coachlogin, en de pagina zegt niet langer dat er geen
-   * medische gegevens op staan. Zonder dit label moet een coach elk dossier
-   * openen om te zien welk dossier hij zoekt, en dan wordt de medische inhoud
-   * alsnog geopend, alleen vaker.
-   */
-  label: string | null;
-  requiredFilled: number;
-  requiredTotal: number;
-  conflicts: number;
-}
-
-/**
- * De werklijst van de behandelaar.
- *
- * Rekent de standen uit `medical.dossier_fields` in SQL, niet door 41 velden per
- * intake in TypeScript te halen. Met een handvol atleten maakt dat niets uit,
- * maar de query is even lang en dit schaalt wel.
- *
- * Alleen tellingen, geen waarden. Een overzicht mag geen medische inhoud tonen:
- * dit is de pagina die openstaat terwijl er iemand meekijkt.
- */
-/**
- * Het label van een intake: de blessure, of anders de pijnlocatie.
- *
- * De afleiding zelf staat in lib/intake/title.ts en wordt gedeeld met het
- * thuisscherm van de atleet. Hier stond een eigen versie, met een andere
- * volgorde en met het ruwe enumwoord voor de zijde ("right", ook in een
- * Nederlandse interface). Dan noemen de coach en de atleet hetzelfde dossier
- * anders, en dat merk je pas in een gesprek waarin ze langs elkaar heen praten.
- *
- * De woorden zijn hier Engels omdat het coachscherm dat is; het thuisscherm
- * geeft dezelfde functie zijn eigen vertalingen mee.
- */
-const COACH_SIDE_LABELS: Record<Exclude<BodySide, "unknown">, string> = {
-  left: "left",
-  right: "right",
-  bilateral: "both sides",
-};
-
-function intakeLabel(row: {
-  injury_region: string | null;
-  injury_side: string | null;
-  injury_diagnosis: string | null;
-  pain_location: string | null;
-}): string | null {
-  return formatIntakeTitleOrNull(
-    titleFromRow({
-      bodyRegion: row.injury_region,
-      side: (row.injury_side as BodySide | null) ?? null,
-      diagnosis: row.injury_diagnosis,
-      painLocation: row.pain_location,
-    }),
-    COACH_SIDE_LABELS,
-  );
-}
-
-export async function listIntakesForCoach(): Promise<IntakeListRow[]> {
-  const rows = await query<{
-    id: string;
-    athlete_id: string;
-    status: string;
-    submitted_at: Date | null;
-    started_at: Date | null;
-    required_filled: string;
-    required_total: string;
-    conflicts: string;
-    dossier_name: string | null;
-    injury_region: string | null;
-    injury_side: string | null;
-    injury_diagnosis: string | null;
-    pain_location: string | null;
-  }>(
-    `select
-       i.id,
-       i.athlete_id,
-       i.status::text as status,
-       i.submitted_at,
-       i.started_at,
-       count(*) filter (
-         where d.required and f.status is not null
-           and f.status not in ('missing', 'conflicting')
-       ) as required_filled,
-       count(*) filter (where d.required) as required_total,
-       count(*) filter (where f.status = 'conflicting') as conflicts,
-       -- De naam zoals de intake hem vond, als terugval op public.athletes.
-       -- Niet bij 'conflicting': staan er twee namen in een dossier, dan is
-       -- er stil een kiezen wat de coach juist moet zien.
-       max(f.value #>> '{}') filter (
-         where d.key = 'identity.full_name'
-           and f.status is not null
-           and f.status not in ('missing', 'conflicting')
-       ) as dossier_name,
-       -- Waar deze intake over gaat. De blessure van deze intake als er een is,
-       -- anders de pijnlocatie uit het dossier. max() over een waarde die per
-       -- intake constant is: de lateral levert één rij, de cross join hierboven
-       -- herhaalt hem per veld.
-       max(inj.body_region) as injury_region,
-       max(inj.side::text) as injury_side,
-       max(inj.diagnosis) as injury_diagnosis,
-       max(f.value #>> '{}') filter (
-         where d.key = 'status.pain_location'
-           and f.status is not null
-           and f.status not in ('missing', 'conflicting')
-       ) as pain_location
-     from public.intakes i
-     left join lateral (
-       select e.body_region, e.side, e.diagnosis
-         from medical.injury_events e
-        where e.intake_id = i.id
-        -- Met diagnose eerst: dat is het meest zeggende label.
-        order by (e.diagnosis is not null) desc, e.onset_date nulls last, e.id
-        limit 1
-     ) inj on true
-     cross join public.field_definitions d
-     left join medical.dossier_fields f
-       on f.intake_id = i.id and f.field_key = d.key
-     group by i.id, i.athlete_id, i.status, i.submitted_at, i.started_at
-     order by i.submitted_at desc nulls last, i.started_at desc`,
-  );
-
-  // De naam staat in public.athletes en die tabel is voor deze rol alleen
-  // leesbaar via PostgREST, niet via de directe verbinding. Vandaar apart.
-  const { data: athletes } = await appDb()
-    .from("intakes")
-    .select("id, athletes(full_name)");
-
-  // PostgREST geeft een ingebedde relatie soms als object en soms als array,
-  // afhankelijk van hoe hij de kardinaliteit inschat. Beide afhandelen is
-  // goedkoper dan erop vertrouwen dat het niet verandert.
-  const nameOf = (embedded: unknown): string | null => {
-    const row = Array.isArray(embedded) ? embedded[0] : embedded;
-    if (!row || typeof row !== "object") return null;
-    const value = (row as { full_name?: unknown }).full_name;
-    return typeof value === "string" ? value : null;
-  };
-
-  const nameById = new Map<string, string | null>(
-    (athletes ?? []).map((row) => [row.id as string, nameOf(row.athletes)]),
-  );
-
-  return rows.map((row) => ({
-    id: row.id,
-    athleteId: row.athlete_id,
-    athleteName: nameById.get(row.id) ?? row.dossier_name ?? null,
-    status: row.status,
-    submittedAt: row.submitted_at?.toISOString() ?? null,
-    startedAt: row.started_at?.toISOString() ?? null,
-    label: intakeLabel(row),
-    requiredFilled: Number(row.required_filled),
-    requiredTotal: Number(row.required_total),
-    conflicts: Number(row.conflicts),
-  }));
-}
-
 /** Alle voorstellen per veld, zodat de coach ziet wat in welk document stond. */
 export async function getProposalsByField(
   intakeId: string,
@@ -377,8 +200,6 @@ export interface ReviewData {
   };
 }
 
-type Embedded = { full_name: string | null } | Array<{ full_name: string | null }> | null;
-
 /**
  * De naam die de coach hoort te zien.
  *
@@ -399,13 +220,6 @@ function dossierName(resolved: Map<string, ResolvedField>): string | null {
   return typeof field.value === "string" && field.value.trim() !== "" ? field.value : null;
 }
 
-function athleteNameFrom(embedded: unknown): string | null {
-  const value = embedded as Embedded;
-  if (!value) return null;
-  if (Array.isArray(value)) return value[0]?.full_name ?? null;
-  return value.full_name ?? null;
-}
-
 export async function getReviewData(
   intakeId: string,
   /** Wie het dossier opvraagt. Gaat mee in het spoor; zonder actor is een
@@ -421,15 +235,30 @@ export async function getReviewData(
    */
   coachLocale: Locale = DEFAULT_LOCALE,
 ): Promise<ReviewData | null> {
-  const { data: intake, error } = await appDb()
-    .from("intakes")
-    .select(
-      "id, status, submitted_at, approved_at, approved_by, locale, athlete_id, athletes(full_name)",
-    )
-    .eq("id", intakeId)
-    .maybeSingle();
-
-  if (error || !intake) return null;
+  // Tijdstippen als de JSON-tekst van PostgREST, zodat het scherm en de export
+  // dezelfde notatie houden als voor fase 5a.
+  const intake = await queryOne<{
+    id: string;
+    status: string;
+    submitted_at: string | null;
+    approved_at: string | null;
+    locale: string;
+    athlete_id: string;
+    athlete_name: string | null;
+    approver_name: string | null;
+  }>(
+    `select i.id, i.status, i.locale, i.athlete_id,
+            to_json(i.submitted_at) #>> '{}' as submitted_at,
+            to_json(i.approved_at) #>> '{}' as approved_at,
+            a.full_name as athlete_name,
+            p.full_name as approver_name
+       from public.intakes i
+       join public.athletes a on a.id = i.athlete_id
+       left join public.profiles p on p.id = i.approved_by
+      where i.id = $1`,
+    [intakeId],
+  );
+  if (!intake) return null;
 
   const [state, injuries, documents, proposals, report] = await Promise.all([
     syncDossier(intakeId, intake.locale as "nl" | "en"),
@@ -438,19 +267,6 @@ export async function getReviewData(
     getProposalsByField(intakeId),
     readLatestReport(intakeId),
   ]);
-
-  // Apart opgehaald en niet als embed: de foreign key naar profiles heeft geen
-  // benoemde relatie in de gegenereerde types, en een embed die op de naam van
-  // een constraint leunt breekt zodra iemand die constraint hernoemt.
-  let approverName: string | null = null;
-  if (intake.approved_by) {
-    const { data: approver } = await appDb()
-      .from("profiles")
-      .select("full_name")
-      .eq("id", intake.approved_by)
-      .maybeSingle();
-    approverName = approver?.full_name ?? null;
-  }
 
   await logAudit({
     action: "read",
@@ -491,14 +307,14 @@ export async function getReviewData(
 
   return {
     intakeId,
-    athleteId: intake.athlete_id as string,
+    athleteId: intake.athlete_id,
     // Een many-to-one embed komt als object terug, een one-to-many als array.
     // Beide vormen afhandelen is goedkoper dan erop vertrouwen.
-    athleteName: athleteNameFrom(intake.athletes) ?? dossierName(state.resolved),
-    status: intake.status as string,
-    submittedAt: intake.submitted_at as string | null,
-    approvedAt: intake.approved_at as string | null,
-    approvedBy: approverName,
+    athleteName: intake.athlete_name ?? dossierName(state.resolved),
+    status: intake.status,
+    submittedAt: intake.submitted_at,
+    approvedAt: intake.approved_at,
+    approvedBy: intake.approver_name,
     reportVersion: report?.version ?? null,
     sections: [...bySection.entries()].map(([section, fields]) => ({ section, fields })),
     injuries,

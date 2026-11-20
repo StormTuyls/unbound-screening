@@ -5,7 +5,7 @@ import { logAudit } from "@/lib/audit";
 import { syncDossier } from "@/lib/db/dossier";
 import { freezeReport } from "@/lib/report/freeze";
 import { isIntakeId, requireCoach } from "@/lib/review/access";
-import { appDb } from "@/lib/supabase/service";
+import { queryOne } from "@/lib/db/sql";
 
 // De goedkeuring maakt een rapportversie aan, en die doet een modelcall voor de
 // samenvatting. Dat past niet in de standaardlimiet.
@@ -47,11 +47,12 @@ export async function POST(
       return NextResponse.json({ error: t("intakeNotFound") }, { status: 404 });
     }
 
-    const { data: intake } = await appDb()
-      .from("intakes")
-      .select("id, status, submitted_at, locale")
-      .eq("id", intakeId)
-      .maybeSingle();
+    const intake = await queryOne<{
+      id: string;
+      status: string;
+      submitted_at: Date | null;
+      locale: string;
+    }>("select id, status, submitted_at, locale from public.intakes where id = $1", [intakeId]);
 
     if (!intake) {
       return NextResponse.json({ error: t("intakeNotFound") }, { status: 404 });
@@ -124,20 +125,16 @@ export async function POST(
 
     const approvedAt = new Date().toISOString();
 
-    // .eq op de oude status en de rij terugvragen: zonder die twee is een
+    // Op de oude status filteren en de rij terugvragen: zonder die twee is een
     // tweede gelijktijdige goedkeuring stil, en dan staat er een andere coach in
     // approved_by dan degene die de melding kreeg.
-    const { data: updated, error: updateError } = await appDb()
-      .from("intakes")
-      .update({ status: "approved", approved_at: approvedAt, approved_by: coach.id })
-      .eq("id", intakeId)
-      .eq("status", intake.status)
-      .select("id")
-      .maybeSingle();
-
-    if (updateError) {
-      throw new Error(`goedkeuren mislukt: ${updateError.message}`);
-    }
+    const updated = await queryOne<{ id: string }>(
+      `update public.intakes
+          set status = 'approved', approved_at = $3, approved_by = $4
+        where id = $1 and status = $2
+        returning id`,
+      [intakeId, intake.status, approvedAt, coach.id],
+    );
 
     if (!updated) {
       return NextResponse.json(

@@ -45,9 +45,8 @@ export async function intakeTitles(
        select e.body_region, e.side, e.diagnosis
          from medical.injury_events e
         where e.intake_id = t.id
-        -- Exact dezelfde volgorde als listIntakesForCoach: met diagnose eerst,
-        -- dat is het meest zeggende label. Wijkt die af, dan heet hetzelfde
-        -- dossier bij de coach anders dan bij de atleet.
+        -- Met diagnose eerst: dat is het meest zeggende label. Coach en atleet
+        -- lezen dit allebei, dus één volgorde voor allebei.
         order by (e.diagnosis is not null) desc, e.onset_date nulls last, e.id
         limit 1
      ) injury on true
