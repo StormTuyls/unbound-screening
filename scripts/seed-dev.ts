@@ -91,7 +91,7 @@ async function main() {
 
   const { error: profielFout } = await db
     .from("profiles")
-    .upsert({ id: coachId, role: "coach", full_name: "Fre Vanderstukken", locale: "nl" });
+    .upsert({ id: coachId, role: "coach", practitioner_kind: "physio", full_name: "Fre Vanderstukken", locale: "nl" });
   if (profielFout) throw new Error(`profiel mislukt: ${profielFout.message}`);
 
   // ── schoon beginnen ────────────────────────────────────────────────────────

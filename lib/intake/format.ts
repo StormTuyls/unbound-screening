@@ -127,3 +127,32 @@ export function documentError(
   const t = translator(locale, "api");
   return t.has(stored as never) ? t(stored as never) : stored;
 }
+
+/**
+ * Wat voor document dit is, in woorden.
+ *
+ * `pdf_text` betekent in de databank "document met een tekstlaag", en dat is
+ * niet altijd een PDF: een los .txt-bestand valt in dezelfde categorie. Dat
+ * blind als "PDF" tonen liegt over het bestand dat de atleet net verstuurde,
+ * dus het mimetype beslist en het kind vult alleen aan.
+ */
+/** Van documentsoort naar berichtsleutel; snake_case wordt camelCase. */
+const KIND_KEY: Record<string, string> = {
+  pdf_scanned: "pdfScanned",
+  image: "image",
+  whatsapp_export: "whatsappExport",
+  vald_csv: "valdCsv",
+};
+
+export function kindLabel(
+  kind: string | null,
+  mimeType: string,
+  t: (key: string) => string,
+): string | null {
+  if (kind && KIND_KEY[kind]) return t(KIND_KEY[kind]);
+  if (mimeType === "application/pdf") return t("pdf");
+  if (mimeType === "text/csv") return t("csv");
+  if (mimeType.startsWith("image/")) return t("image");
+  if (mimeType === "text/plain") return t("text");
+  return kind;
+}

@@ -1,4 +1,3 @@
-import { appDb } from "@/lib/supabase/service";
 import { logAudit } from "@/lib/audit";
 import { query, queryOne } from "@/lib/db/sql";
 
@@ -21,6 +20,11 @@ const tekst = (waarde: unknown): string | null =>
  * De naam komt hier alleen uit de kolom. In de intake valt hij terug op het
  * dossier als de kolom leeg is; die terugval kan hier niet, want het dossier
  * blijft aan de intakekant.
+ *
+ * Bewaartermijn, behandelaar en toestemming komen mee voor de tabbladen
+ * Dossier en Toestemming: dat zijn eigenschappen van de persoon, niet van een
+ * intake. Datums gaan als tekst uit SQL, want pg geeft een date als Date terug
+ * en tekst() zou die stilletjes tot null maken.
  */
 export interface AthleteProfile {
   id: string;
@@ -31,31 +35,45 @@ export interface AthleteProfile {
   competitionLevel: string | null;
   dateOfBirth: string | null;
   hasAccount: boolean;
+  practitionerId: string | null;
+  retentionMode: "indefinite" | "until_date";
+  retentionUntil: string | null;
+  retentionBasis: string | null;
+  accountConsentAt: string | null;
 }
 
 export async function getAthleteProfile(
   athleteId: string,
 ): Promise<AthleteProfile | null> {
-  const { data, error } = await appDb()
-    .from("athletes")
-    .select(
-      "id, full_name, sex, sport, discipline, competition_level, date_of_birth, profile_id",
-    )
-    .eq("id", athleteId)
-    .is("deleted_at", null)
-    .maybeSingle();
-
-  if (error || !data) return null;
+  const row = await queryOne<Record<string, unknown>>(
+    `select a.id, a.full_name, a.sex, a.sport, a.discipline, a.competition_level,
+            a.date_of_birth::text as date_of_birth, a.profile_id, a.practitioner_id,
+            a.retention_mode, a.retention_until::text as retention_until, a.retention_basis,
+            (select c.granted_at::date::text
+               from public.consents c
+              where c.athlete_id = a.id and c.intake_id is null and c.withdrawn_at is null
+              order by c.granted_at desc
+              limit 1) as account_consent_at
+       from public.athletes a
+      where a.id = $1 and a.deleted_at is null`,
+    [athleteId],
+  );
+  if (!row) return null;
 
   return {
-    id: data.id as string,
-    name: tekst(data.full_name),
-    sex: tekst(data.sex),
-    sport: tekst(data.sport),
-    discipline: tekst(data.discipline),
-    competitionLevel: tekst(data.competition_level),
-    dateOfBirth: tekst(data.date_of_birth),
-    hasAccount: data.profile_id !== null,
+    id: row.id as string,
+    name: tekst(row.full_name),
+    sex: tekst(row.sex),
+    sport: tekst(row.sport),
+    discipline: tekst(row.discipline),
+    competitionLevel: tekst(row.competition_level),
+    dateOfBirth: tekst(row.date_of_birth),
+    hasAccount: row.profile_id !== null,
+    practitionerId: (row.practitioner_id as string | null) ?? null,
+    retentionMode: row.retention_mode as AthleteProfile["retentionMode"],
+    retentionUntil: tekst(row.retention_until),
+    retentionBasis: tekst(row.retention_basis),
+    accountConsentAt: tekst(row.account_consent_at),
   };
 }
 

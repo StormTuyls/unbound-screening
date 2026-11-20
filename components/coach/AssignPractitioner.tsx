@@ -27,6 +27,7 @@ export function AssignPractitioner({
   options: Array<{ id: string; name: string | null; kind: PractitionerKind; archived: boolean }>;
 }) {
   const t = useTranslations("coach");
+  const tp = useTranslations("profile");
   const router = useRouter();
   const [value, setValue] = useState(current ?? "");
   const [busy, setBusy] = useState(false);
@@ -72,13 +73,14 @@ export function AssignPractitioner({
         <option value="">{t("notAssigned")}</option>
         {options.map((option) => (
           <option key={option.id} value={option.id}>
-            {option.name ?? t("nameUnknown")} · {option.kind}
-            {option.archived ? " (archived)" : ""}
+            {option.name ?? t("nameUnknown")} ·{" "}
+            {tp(option.kind === "physio" ? "kindPhysio" : "kindCoach")}
+            {option.archived ? ` (${t("archivedTag")})` : ""}
           </option>
         ))}
       </select>
-      {busy && <span className="text-xs text-ink-faint">saving…</span>}
-      {saved && !busy && <span className="text-xs text-ok">saved</span>}
+      {busy && <span className="text-xs text-ink-faint">{tp("saving")}</span>}
+      {saved && !busy && <span className="text-xs text-ok">{tp("saved")}</span>}
       {error && <span className="text-xs text-danger">{error}</span>}
     </span>
   );

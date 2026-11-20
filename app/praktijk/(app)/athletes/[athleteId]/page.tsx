@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import Link from "next/link";
 import { PurgeAthlete } from "@/components/coach/PurgeAthlete";
+import { AssignPractitioner } from "@/components/coach/AssignPractitioner";
 import { getTranslations } from "next-intl/server";
 import { checkCoach, isUuid } from "@/lib/review/access";
 import {
@@ -9,6 +10,9 @@ import {
   type AthleteIntake,
 } from "@/lib/db/athletes";
 import { getTimelineEvents, listSessions } from "@/lib/db/screening";
+import { listDocuments } from "@/lib/db/medical";
+import { listTeam } from "@/lib/db/practitioners";
+import { kindLabel } from "@/lib/intake/format";
 import { ageOn } from "@/lib/screening/population";
 
 export async function generateMetadata() {
@@ -37,8 +41,16 @@ export const dynamic = "force-dynamic";
  * en pas naast elkaar zie je dat een knik in de cijfers op een blessure volgt.
  */
 
-const TABS = ["dossier", "screening", "intakes"] as const;
+const TABS = ["dossier", "screening", "intakes", "documents", "consent"] as const;
 type Tab = (typeof TABS)[number];
+
+const TAB_LABEL = {
+  dossier: "tabDossier",
+  screening: "tabScreening",
+  intakes: "tabIntakes",
+  documents: "tabDocuments",
+  consent: "tabConsent",
+} as const;
 
 function toTab(raw: string | undefined): Tab {
   return TABS.includes(raw as Tab) ? (raw as Tab) : "dossier";
@@ -82,10 +94,35 @@ export default async function AthleteHubPage({
 
   // Alleen waar hij getekend wordt: een blessurelijst ophalen voor een tabblad
   // dat hem niet toont is een query die niemand leest.
-  const injuries = tab === "dossier" ? await getTimelineEvents(athleteId) : [];
+  const [injuries, team, documents] = await Promise.all([
+    tab === "dossier" ? getTimelineEvents(athleteId) : [],
+    tab === "dossier" ? listTeam() : [],
+    // Documenten hangen aan een intake, niet aan de atleet. Per intake ophalen
+    // en samenvoegen; meer dan een handvol intakes heeft niemand.
+    tab === "documents"
+      ? Promise.all(
+          intakes.map(async (intake) =>
+            (await listDocuments(intake.id)).map((doc) => ({ ...doc, intakeId: intake.id })),
+          ),
+        ).then((lists) => lists.flat().sort((a, b) => (a.uploadedAt < b.uploadedAt ? 1 : -1)))
+      : [],
+  ]);
+
+  // Gearchiveerde behandelaars blijven kiesbaar, met een label: een dossier
+  // terugzetten op wie het behandeld heeft is een correctie die moet kunnen.
+  const assignable = team
+    .filter((member) => member.kind !== null)
+    .map((member) => ({
+      id: member.id,
+      name: member.fullName,
+      kind: member.kind!,
+      archived: member.archivedAt !== null,
+    }));
 
   const t = await getTranslations("athletes");
   const ts = await getTranslations("screening");
+  const tc = await getTranslations("coach");
+  const tf = await getTranslations("files");
 
   const today = new Date().toISOString().slice(0, 10);
   const age = ageOn(athlete.dateOfBirth, today);
@@ -178,13 +215,7 @@ export default async function AthleteHubPage({
                   : "border-transparent text-ink-muted hover:bg-canvas"
               }`}
             >
-              {t(
-                name === "dossier"
-                  ? "tabDossier"
-                  : name === "screening"
-                    ? "tabScreening"
-                    : "tabIntakes",
-              )}
+              {t(TAB_LABEL[name])}
               {count !== null && count > 0 && (
                 <span className="text-xs text-ink-muted tabular-nums">{count}</span>
               )}
@@ -195,6 +226,17 @@ export default async function AthleteHubPage({
 
       {tab === "dossier" && (
         <>
+          {/* Iemand met een login hier. De atleet kiest hem op zijn profiel; de
+              praktijk kan het hier corrigeren. */}
+          <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="text-xs text-ink-muted">{tc("assignedTo")}</span>
+            <AssignPractitioner
+              athleteId={athlete.id}
+              current={athlete.practitionerId}
+              options={assignable}
+            />
+          </div>
+
           <div className="mt-6 grid gap-4 sm:grid-cols-2">
             <section className="rounded-card border border-hairline px-4 py-3.5">
               <h2 className="text-label text-ink-muted uppercase">{t("lastIntakeTitle")}</h2>
@@ -279,15 +321,6 @@ export default async function AthleteHubPage({
               </ol>
             )}
           </section>
-
-          {/* Onderaan en niet in de kop: dit is de enige handeling die niet
-              terug te draaien is, en ze gaat over de persoon, niet over één intake. */}
-          <PurgeAthlete
-            athleteId={athlete.id}
-            athleteName={athlete.name}
-            intakeCount={intakes.length}
-            hasAccount={athlete.hasAccount}
-          />
         </>
       )}
 
@@ -349,6 +382,88 @@ export default async function AthleteHubPage({
             </ul>
           )}
         </section>
+      )}
+
+      {tab === "documents" && (
+        <section className="mt-6">
+          <h2 className="border-b border-hairline pb-2 text-sm font-semibold">
+            {t("tabDocuments")}
+          </h2>
+          {documents.length === 0 ? (
+            <p className="mt-3 text-sm text-ink-muted">{t("noDocuments")}</p>
+          ) : (
+            <ul className="divide-y divide-rule">
+              {documents.map((doc) => (
+                <li key={doc.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-2">
+                  <span className="min-w-0 text-sm break-all">{doc.originalFilename}</span>
+                  <span className="text-xs text-ink-muted">
+                    {[
+                      kindLabel(doc.kind, doc.mimeType, tf as (key: string) => string),
+                      doc.uploadedAt.slice(0, 10),
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </span>
+                  {/* De staat als woord: een document dat niet gelezen kon worden
+                      is precies wat de behandelaar moet zien. */}
+                  <span
+                    className={`text-xs ${doc.processingError ? "text-danger" : "text-ink-muted"}`}
+                  >
+                    {tf(doc.processingError ? "failed" : doc.processedAt ? "read" : "unread")}
+                  </span>
+                  <Link
+                    href={`/review/${doc.intakeId}`}
+                    className="ml-auto inline-flex min-h-11 items-center rounded-md px-3.5 text-xs ring-1 ring-hairline ring-inset transition-colors hover:bg-canvas"
+                  >
+                    {t("openReport")}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
+      {/* Bewaartermijn, toestemming en verwijderen zijn eigenschappen van de
+          persoon, niet van een intake. Verwijderen staat hier en niet onder een
+          lijst die je aanklikt: het is de enige handeling die niet terug kan. */}
+      {tab === "consent" && (
+        <>
+          <section className="mt-6">
+            <h2 className="border-b border-hairline pb-2 text-sm font-semibold">
+              {tc("dataAndConsent")}
+            </h2>
+            <dl className="divide-y divide-rule">
+              {[
+                [
+                  tc("retention"),
+                  athlete.retentionMode === "until_date"
+                    ? tc("keptUntil", { date: athlete.retentionUntil ?? tc("unknown") })
+                    : tc("keptIndefinitely"),
+                ],
+                [tc("retentionBasis"), athlete.retentionBasis],
+                [
+                  tc("consentOnFile"),
+                  athlete.accountConsentAt
+                    ? tc("consentGiven", { date: athlete.accountConsentAt })
+                    : null,
+                ],
+              ].map(([label, value]) => (
+                <div key={label} className="flex flex-col gap-0.5 py-2 text-sm sm:flex-row sm:gap-3">
+                  <dt className="text-xs text-ink-muted sm:w-48 sm:shrink-0">{label}</dt>
+                  <dd className={value ? "min-w-0" : "min-w-0 text-ink-faint"}>{value ?? "-"}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+
+          <PurgeAthlete
+            athleteId={athlete.id}
+            athleteName={athlete.name}
+            intakeCount={intakes.length}
+            hasAccount={athlete.hasAccount}
+          />
+        </>
       )}
     </>
   );
