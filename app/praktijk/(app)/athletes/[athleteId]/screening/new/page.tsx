@@ -65,7 +65,7 @@ export default async function NewScreeningPage({
       unit: item.unit,
       perSide: item.laterality === "per_side",
       decimals: item.decimals,
-      classifies: item.rule?.classificationEnabled ?? false,
+      bands: item.rule?.classificationEnabled ? item.rule.bands : null,
       protocolConfirmed: item.protocolConfirmed,
       note: item.ruleNote,
     }));

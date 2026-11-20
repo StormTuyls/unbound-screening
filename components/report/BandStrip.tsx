@@ -51,7 +51,7 @@ export interface StripMarker {
  * slechtste. Door te delen door de hoogste score in dezelfde lijst klopt het
  * voor beide. Dit is de fout die eerder op het sessiescherm stond.
  */
-function zoneFill(score: number | null, max: number): string {
+export function zoneFill(score: number | null, max: number): string {
   if (score === null || max <= 0) return "var(--color-canvas)";
   const ratio = score / max;
   if (ratio <= 0) return "var(--color-danger-band)";
