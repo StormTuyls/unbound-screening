@@ -4,7 +4,8 @@ import { loadEnv } from "../scripts/env";
 
 loadEnv();
 
-import { appDb, storage, DOCUMENTS_BUCKET } from "../lib/supabase/service";
+import { appDb } from "../scripts/postgrest";
+import { storage, DOCUMENTS_BUCKET } from "../lib/supabase/service";
 import { query } from "../lib/db/sql";
 import { newToken } from "../lib/intake/session";
 import { addProposals } from "../lib/db/dossier";

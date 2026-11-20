@@ -2,7 +2,7 @@ import { loadEnv } from "./env";
 loadEnv();
 
 import { randomUUID } from "node:crypto";
-import { appDb } from "../lib/supabase/service";
+import { appDb } from "./postgrest";
 import { query } from "../lib/db/sql";
 import { createSession, getHistory, getLibrary, toSpecs } from "../lib/db/screening";
 import { evaluate } from "../lib/screening/evaluate";

@@ -1,12 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 
 /**
- * Server-side Supabase-clients.
+ * Supabase Storage voor de server, en verder niets.
  *
- * Let op wat hier NIET staat: een client voor het `medical`-schema. Dat schema
- * is niet via PostgREST bereikbaar en wordt aangesproken via een directe
- * Postgres-verbinding in lib/db/sql.ts. Zou hier een medicalDb() staan, dan zou
- * `medical` alsnog in de exposed schemas moeten en was de hele scheiding weg.
+ * Tabellen gaan sinds fase 5a enkel via lib/db/sql.ts. Wat hier overblijft
+ * verhuist in fase 5b naar een map op schijf.
  *
  * Importeer dit nooit in een client component.
  */
@@ -20,12 +18,6 @@ function credentials(): { url: string; key: string } {
 }
 
 const AUTH = { persistSession: false, autoRefreshToken: false } as const;
-
-/** Identiteit, intakes, consent, chat, audit. Het `public`-schema. */
-export function appDb() {
-  const { url, key } = credentials();
-  return createClient(url, key, { auth: AUTH, db: { schema: "public" } });
-}
 
 /**
  * Alleen voor de private bucket met ruwe documenten. De bucket heeft geen

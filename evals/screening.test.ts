@@ -4,7 +4,7 @@ import { loadEnv } from "../scripts/env";
 
 loadEnv();
 
-import { appDb } from "../lib/supabase/service";
+import { appDb } from "../scripts/postgrest";
 import { query } from "../lib/db/sql";
 import {
   createSession,
