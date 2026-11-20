@@ -15,7 +15,11 @@
     "seed:dev": "tsx scripts/seed-dev.ts",
     "test": "tsx evals/unit/i18n-keys.test.ts && tsx evals/unit/overdue.test.ts && tsx evals/unit/post-json.test.ts && tsx evals/unit/screening-evaluate.test.ts && tsx evals/unit/screening-library.test.ts && tsx evals/unit/screening-baseline.test.ts && tsx evals/unit/screening-bands.test.ts && tsx evals/unit/reference-rules.test.ts && tsx evals/unit/screening-chart.test.ts && tsx evals/unit/screening-derive.test.ts && tsx evals/unit/screening-group.test.ts && tsx evals/unit/screening-population.test.ts && tsx evals/unit/screening-shift.test.ts",
     "test:screening": "tsx evals/screening.test.ts",
-    "db:local-role": "tsx scripts/db-local.ts"
+    "test:purge": "tsx evals/purge.test.ts",
+    "test:discard": "tsx evals/discard.test.ts",
+    "db:local-role": "tsx scripts/db-local.ts",
+    "docker:up": "docker compose --env-file .env.local up --build -d",
+    "docker:down": "docker compose --env-file .env.local down"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.123.0",

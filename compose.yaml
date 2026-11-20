@@ -1,0 +1,48 @@
+# De app in een container naast de lokale Supabase-stack, op http://localhost:3200.
+#
+#   npm run docker:up     bouwen en starten
+#   npm run docker:down   stoppen
+#
+# Waarom de socat-helper: de app praat met Supabase op 127.0.0.1:54321 en met
+# Postgres op 127.0.0.1:54322, want dat adres zit in NEXT_PUBLIC_SUPABASE_URL
+# en geldt ook voor je browser. In een container wijst 127.0.0.1 naar de
+# container zelf. De helper deelt het netwerk van de app en stuurt die twee
+# poorten door naar de Supabase-containers, zodat de app niets hoeft te weten.
+#
+# shortcut: de helper verdwijnt met Supabase in fase 5; op de eigen server
+# komen hier een Postgres-container en een volume voor de documenten.
+
+services:
+  app:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL}
+        NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY}
+        NEXT_PUBLIC_APP_URL: http://localhost:3200
+    env_file: .env.local
+    environment:
+      NEXT_PUBLIC_APP_URL: http://localhost:3200
+    ports:
+      - "3200:3000"
+    networks:
+      - supabase
+    restart: unless-stopped
+
+  supabase-bridge:
+    image: alpine/socat:1.8.0.1
+    network_mode: service:app
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        socat TCP-LISTEN:54321,fork,reuseaddr TCP:supabase_kong_unbound-screening:8000 &
+        exec socat TCP-LISTEN:54322,fork,reuseaddr TCP:supabase_db_unbound-screening:5432
+    depends_on:
+      - app
+    restart: unless-stopped
+
+networks:
+  supabase:
+    name: supabase_network_unbound-screening
+    external: true

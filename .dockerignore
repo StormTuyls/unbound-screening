@@ -1,0 +1,11 @@
+# Geheimen gaan er bij het starten in (env_file), nooit in de image.
+.env*
+!.env.example
+
+node_modules
+.next
+.git
+.claude
+evals
+docs
+*.log

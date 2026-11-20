@@ -2,6 +2,10 @@ import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
 
 const nextConfig: NextConfig = {
+  // Een zelfstandige server in .next/standalone, voor de container en later de
+  // eigen server. Vercel negeert dit.
+  output: "standalone",
+
   // Medische data: geen bronmaps in productiebundels.
   productionBrowserSourceMaps: false,
 
