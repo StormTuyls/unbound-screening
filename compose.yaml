@@ -6,13 +6,31 @@
 # Waarom de socat-helper: de app praat met Supabase op 127.0.0.1:54321 en met
 # Postgres op 127.0.0.1:54322, want dat adres zit in NEXT_PUBLIC_SUPABASE_URL
 # en geldt ook voor je browser. In een container wijst 127.0.0.1 naar de
-# container zelf. De helper deelt het netwerk van de app en stuurt die twee
-# poorten door naar de Supabase-containers, zodat de app niets hoeft te weten.
+# container zelf. De helper stuurt die twee poorten door naar de
+# Supabase-containers, zodat de app niets hoeft te weten.
+#
+# De helper bezit het netwerk en de app leent het, niet andersom. Andersom
+# verloor de helper zijn netwerk zodra de app herstartte, en dan stond de app na
+# een stroomonderbreking zonder databank.
 #
 # shortcut: de helper verdwijnt met Supabase in fase 5; op de eigen server
 # komen hier een Postgres-container en een volume voor de documenten.
 
 services:
+  supabase-bridge:
+    image: alpine/socat:1.8.0.1
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        socat TCP-LISTEN:54321,fork,reuseaddr TCP:supabase_kong_unbound-screening:8000 &
+        exec socat TCP-LISTEN:54322,fork,reuseaddr TCP:supabase_db_unbound-screening:5432
+    ports:
+      - "3200:3000"
+    networks:
+      - supabase
+    restart: unless-stopped
+
   app:
     build:
       context: .
@@ -23,24 +41,18 @@ services:
     env_file: .env.local
     environment:
       NEXT_PUBLIC_APP_URL: http://localhost:3200
-    ports:
-      - "3200:3000"
-    networks:
-      - supabase
+    network_mode: service:supabase-bridge
+    # De aangeleverde documenten. Een benoemd volume, zodat ze een nieuwe image
+    # en een herstart overleven; op de eigen server wordt dit een map op een
+    # versleutelde schijf, die mee in de backup gaat.
+    volumes:
+      - documents:/app/data/documents
+    depends_on:
+      - supabase-bridge
     restart: unless-stopped
 
-  supabase-bridge:
-    image: alpine/socat:1.8.0.1
-    network_mode: service:app
-    entrypoint:
-      - sh
-      - -c
-      - >-
-        socat TCP-LISTEN:54321,fork,reuseaddr TCP:supabase_kong_unbound-screening:8000 &
-        exec socat TCP-LISTEN:54322,fork,reuseaddr TCP:supabase_db_unbound-screening:5432
-    depends_on:
-      - app
-    restart: unless-stopped
+volumes:
+  documents:
 
 networks:
   supabase:

@@ -24,6 +24,11 @@ FROM node:24-alpine AS run
 WORKDIR /app
 ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 NEXT_TELEMETRY_DISABLED=1
 RUN addgroup -S app && adduser -S app -G app
+# De documentenmap bestaat al in de image, van de app-gebruiker en alleen voor
+# hem leesbaar. Een volume dat hier gemount wordt, neemt die eigenaar en die
+# rechten over bij het eerste gebruik.
+ENV DOCUMENTS_DIR=/app/data/documents
+RUN mkdir -p /app/data/documents && chown -R app:app /app/data && chmod -R 700 /app/data
 COPY --from=build --chown=app:app /app/.next/standalone ./
 COPY --from=build --chown=app:app /app/.next/static ./.next/static
 USER app
