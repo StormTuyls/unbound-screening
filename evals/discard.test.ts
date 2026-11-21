@@ -5,7 +5,8 @@ import { loadEnv } from "../scripts/env";
 loadEnv();
 
 import { appDb } from "../scripts/postgrest";
-import { storage, DOCUMENTS_BUCKET } from "../lib/supabase/service";
+import { existsSync, readdirSync } from "node:fs";
+import { resolveDocumentPath, writeDocument } from "../lib/documents/store";
 import { query } from "../lib/db/sql";
 import { newToken } from "../lib/intake/session";
 import { addProposals } from "../lib/db/dossier";
@@ -21,11 +22,11 @@ import { discardIntake } from "../lib/intake/discard";
  * tegelijk:
  *
  * 1. Er blijft niets van dit concept staan. Niet in public, niet in medical,
- *    en niet in de bucket. Net als bij de atleetpurge staat er een bestand in
- *    Storage dat NIET in medical.documents geregistreerd is: een signed
- *    upload-URL wordt uitgegeven voordat de rij bestaat, dus dat is een echt
- *    scenario en een implementatie die alleen de administratie volgt laat
- *    precies dat medische document staan.
+ *    en niet in de documentenmap. Net als bij de atleetpurge staat er een
+ *    bestand dat NIET in medical.documents geregistreerd is: een upload wordt
+ *    bewaard voordat de rij bestaat, dus dat is een echt scenario en een
+ *    implementatie die alleen de administratie volgt laat precies dat medische
+ *    document staan.
  * 2. Het auditspoor blijft. "Niets achtergebleven" mag nooit betekenen dat ook
  *    de regel verdween die zegt dat er iets weggegooid is.
  * 3. Een INGEDIENDE intake wordt geweigerd. Dat is de veiligheidsgrens van de
@@ -41,6 +42,10 @@ import { discardIntake } from "../lib/intake/discard";
  */
 
 const db = appDb();
+
+async function* once(bytes: Uint8Array) {
+  yield bytes;
+}
 
 async function makeAthlete(basis: string): Promise<string> {
   const { data, error } = await db
@@ -109,13 +114,10 @@ async function main() {
     },
   ]);
 
-  // Een geregistreerd document, mét bestand in de bucket.
+  // Een geregistreerd document, mét bestand in de documentenmap.
   const bytes = Buffer.from("Verslag onderzoek\nLengte: 176 cm\n", "utf8");
   const registeredPath = `${intakeId}/${randomUUID()}.txt`;
-  const upload = await storage()
-    .from(DOCUMENTS_BUCKET)
-    .upload(registeredPath, bytes, { contentType: "text/plain" });
-  if (upload.error) throw new Error(`upload mislukt: ${upload.error.message}`);
+  await writeDocument(registeredPath, once(bytes), 1_000_000);
 
   const documentId = await upsertDocument({
     intakeId,
@@ -131,12 +133,7 @@ async function main() {
 
   // En een wees: geupload, nooit geregistreerd. Zie de kop van dit bestand.
   const orphanPath = `${intakeId}/${randomUUID()}.txt`;
-  const orphan = await storage()
-    .from(DOCUMENTS_BUCKET)
-    .upload(orphanPath, Buffer.from("gestrande upload", "utf8"), {
-      contentType: "text/plain",
-    });
-  if (orphan.error) throw new Error(`wees-upload mislukt: ${orphan.error.message}`);
+  await writeDocument(orphanPath, once(Buffer.from("gestrande upload", "utf8")), 1_000_000);
 
   // ------------------------------------------------- het staat er echt
   assert.equal(await countChat(intakeId), 2, "opbouw: de chatberichten staan er niet");
@@ -155,8 +152,11 @@ async function main() {
     "opbouw: de paginatekst staat er niet",
   );
 
-  const before = await storage().from(DOCUMENTS_BUCKET).list(intakeId, { limit: 100 });
-  assert.equal(before.data?.length, 2, "opbouw: er staan geen twee bestanden in de bucket");
+  assert.equal(
+    readdirSync(resolveDocumentPath(intakeId)).length,
+    2,
+    "opbouw: er staan geen twee bestanden in de documentenmap",
+  );
 
   // ------------------------------------------------------------ weggooien
   const result = await discardIntake({ intakeId, actorId: null, actorKind: "athlete" });
@@ -186,8 +186,11 @@ async function main() {
     "de paginatekst staat er nog",
   );
 
-  const after = await storage().from(DOCUMENTS_BUCKET).list(intakeId, { limit: 100 });
-  assert.equal(after.data?.length ?? 0, 0, "er staan nog bestanden in de bucket");
+  assert.equal(
+    existsSync(resolveDocumentPath(intakeId)),
+    false,
+    "de intakemap staat er nog",
+  );
 
   // De atleet zelf blijft. Dit gooit een concept weg, geen persoon.
   assert.equal(

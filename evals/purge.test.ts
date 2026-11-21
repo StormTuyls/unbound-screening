@@ -6,7 +6,8 @@ loadEnv();
 
 import { createClient } from "@supabase/supabase-js";
 import { appDb } from "../scripts/postgrest";
-import { storage, DOCUMENTS_BUCKET } from "../lib/supabase/service";
+import { existsSync } from "node:fs";
+import { resolveDocumentPath, writeDocument } from "../lib/documents/store";
 import { query } from "../lib/db/sql";
 import { newToken } from "../lib/intake/session";
 import { addProposals, syncDossier } from "../lib/db/dossier";
@@ -25,8 +26,8 @@ import { runPurgeJob } from "../lib/purge/purge";
  *
  * 1. Er wordt eerst gecontroleerd dat alles ER IS. Een test die alleen nullen
  *    achteraf controleert, slaagt ook als de opbouw stilletjes niets deed.
- * 2. Er staat een bestand in Storage dat NIET in medical.documents geregistreerd
- *    is. Een signed upload-URL wordt uitgegeven voordat het document bestaat,
+ * 2. Er staat een bestand in de documentenmap dat NIET in medical.documents
+ *    geregistreerd is. Een upload wordt bewaard voordat het document bestaat,
  *    dus dat is een echt scenario, en een implementatie die alleen de
  *    administratie volgt laat precies dat medische document staan. Zonder dit
  *    geval slaagt de test tegen een kapotte implementatie.
@@ -127,15 +128,16 @@ const { error: chatError } = await db.from("chat_messages").insert([
 ]);
 if (chatError) throw new Error(`gesprek maken mislukt: ${chatError.message}`);
 
+async function* once(bytes: Uint8Array) {
+  yield bytes;
+}
+
 // Twee geregistreerde documenten met paginatekst.
 const documentIds: string[] = [];
 const storagePaths: string[] = [];
 for (const intakeId of intakeIds) {
   const path = `${intakeId}/${randomUUID()}.txt`;
-  const upload = await storage()
-    .from(DOCUMENTS_BUCKET)
-    .upload(path, Buffer.from(PAGE_TEXT, "utf8"), { contentType: "text/plain" });
-  if (upload.error) throw new Error(`upload mislukt: ${upload.error.message}`);
+  await writeDocument(path, once(Buffer.from(PAGE_TEXT, "utf8")), 1_000_000);
   storagePaths.push(path);
 
   const documentId = await upsertDocument({
@@ -152,12 +154,10 @@ for (const intakeId of intakeIds) {
   await savePages(documentId, [{ pageNumber: 1, text: PAGE_TEXT }]);
 }
 
-// Het weesbestand: in Storage, in geen enkele tabel. Zie de toelichting boven.
+// Het weesbestand: in de documentenmap, in geen enkele tabel. Zie de toelichting boven.
 const orphanPath = `${submittedIntake}/${randomUUID()}.txt`;
-const orphanUpload = await storage()
-  .from(DOCUMENTS_BUCKET)
-  .upload(orphanPath, Buffer.from("wees", "utf8"), { contentType: "text/plain" });
-if (orphanUpload.error) throw new Error(`weesupload mislukt: ${orphanUpload.error.message}`);
+await writeDocument(orphanPath, once(Buffer.from("wees", "utf8")), 1_000_000);
+assert.equal(existsSync(resolveDocumentPath(orphanPath)), true, "opbouw: het weesbestand staat er niet");
 
 await addProposals(submittedIntake, [
   {
@@ -413,16 +413,13 @@ for (const [table, filter] of [
 const { data: goneUser } = await admin.auth.admin.getUserById(userId);
 assert.equal(goneUser?.user ?? null, null, "het inlogaccount bestaat nog");
 
-// Storage, inclusief het weesbestand dat in geen enkele tabel stond.
-for (const intakeId of intakeIds) {
-  const { data, error } = await storage().from(DOCUMENTS_BUCKET).list(intakeId);
-  if (error) throw new Error(`storage opvragen mislukt: ${error.message}`);
-  assert.equal(data?.length ?? 0, 0, `er staan nog bestanden onder ${intakeId}`);
+// De documentenmap, inclusief het weesbestand dat in geen enkele tabel stond.
+for (const path of [...storagePaths, orphanPath]) {
+  assert.equal(existsSync(resolveDocumentPath(path)), false, `${path} staat er nog`);
 }
-const { data: orphanCheck } = await storage()
-  .from(DOCUMENTS_BUCKET)
-  .list(submittedIntake, { search: orphanPath.split("/")[1] });
-assert.equal(orphanCheck?.length ?? 0, 0, "het niet-geregistreerde bestand staat er nog");
+for (const intakeId of intakeIds) {
+  assert.equal(existsSync(resolveDocumentPath(intakeId)), false, `de map van ${intakeId} staat er nog`);
+}
 
 // En het spoor: één samenvattende regel erbij, en het oude spoor intact.
 const purgeRows = await query<{ counts: Record<string, number> }>(

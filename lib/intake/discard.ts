@@ -1,5 +1,5 @@
 import { queryOne } from "@/lib/db/sql";
-import { purgeStorage } from "@/lib/purge/storage";
+import { purgeDocuments } from "@/lib/documents/store";
 
 /**
  * Een concept weggooien.
@@ -66,10 +66,10 @@ export async function discardIntake(input: {
   }
 
   // De paden komen uit de functie omdat de documentrijen na de delete niet meer
-  // bestaan. purgeStorage kijkt daarnaast zelf onder de intake-prefix, en dat
-  // is nodig: een upload die strandde tussen de signed URL en de registratie
-  // laat een bestand achter dat in geen enkele rij genoemd wordt.
-  const storage = await purgeStorage({
+  // bestaan. purgeDocuments kijkt daarnaast zelf in de intakemap, en dat is
+  // nodig: een upload die strandde tussen het bewaren en de registratie laat
+  // een bestand achter dat in geen enkele rij genoemd wordt.
+  const storage = await purgeDocuments({
     intakeIds: [input.intakeId],
     knownPaths: result.storage_paths ?? [],
   });

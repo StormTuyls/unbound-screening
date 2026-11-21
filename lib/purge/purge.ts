@@ -1,6 +1,6 @@
 import { query, queryOne } from "@/lib/db/sql";
 import { purgeAthleteRows } from "@/lib/purge/db";
-import { purgeStorage } from "@/lib/purge/storage";
+import { purgeDocuments } from "@/lib/documents/store";
 import { purgeNotion, notionErrorIsHarmless } from "@/lib/purge/notion";
 import { purgeAuthUser } from "@/lib/purge/auth";
 import {
@@ -101,7 +101,7 @@ export async function runPurgeJob(jobId: string): Promise<PurgeJob> {
 
     // 2. Storage. Vóór de databank, want daarna is `documents.storage_path` weg.
     if (!done(result, "storage")) {
-      const cleaned = await purgeStorage({
+      const cleaned = await purgeDocuments({
         intakeIds: plan.intake_ids,
         knownPaths: plan.storage_paths,
       });
@@ -148,7 +148,7 @@ export async function runPurgeJob(jobId: string): Promise<PurgeJob> {
         (path) => !plan.storage_paths.includes(path),
       );
       if (extra.length > 0) {
-        const cleaned = await purgeStorage({
+        const cleaned = await purgeDocuments({
           intakeIds: purged.manifest.intake_ids,
           knownPaths: extra,
         });
