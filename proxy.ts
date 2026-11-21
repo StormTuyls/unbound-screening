@@ -78,7 +78,10 @@ export const config = {
     "/review/:path*",
     "/api/athlete/:path*",
     "/api/coach/:path*",
-    "/api/intake/:path*",
+    // Alles onder /api/intake behalve de upload: de proxy buffert een body maar
+    // tot 10 MB en kapt de rest stil af. Zie app/api/intake/documents/upload.
+    "/api/intake",
+    "/api/intake/((?!documents/upload$).*)",
     "/api/review/:path*",
     "/api/locale",
   ],

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { storage, DOCUMENTS_BUCKET } from "@/lib/supabase/service";
+import { readDocument as readStoredFile } from "@/lib/documents/store";
 import { extractPages, looksScanned, type DocumentPage } from "@/lib/extract/pages";
 import { parseWhatsAppExport, whatsAppToPlainText } from "@/lib/extract/whatsapp";
 import { extractDocument, type ExtractionInput } from "@/lib/claude/extractDocument";
@@ -115,14 +115,6 @@ function planFor(
   };
 }
 
-async function download(storagePath: string): Promise<Uint8Array> {
-  const result = await storage().from(DOCUMENTS_BUCKET).download(storagePath);
-  if (result.error || !result.data) {
-    throw new Error(`document downloaden mislukt: ${result.error?.message}`);
-  }
-  return new Uint8Array(await result.data.arrayBuffer());
-}
-
 /**
  * Stap een: het bestand hoort er nu bij, maar er is niets uit gehaald.
  *
@@ -137,7 +129,7 @@ export async function registerDocument(input: {
   originalFilename: string;
   mimeType: string;
 }): Promise<RegisterResult> {
-  const bytes = await download(input.storagePath);
+  const bytes = await readStoredFile(input.storagePath);
   const sha256 = createHash("sha256").update(bytes).digest("hex");
 
   // Zelfde inhoud, al eerder aangeleverd: teruggeven wat er al staat. Geen
@@ -231,7 +223,7 @@ export async function readDocument(input: {
     };
   }
 
-  const bytes = await download(document.storagePath);
+  const bytes = await readStoredFile(document.storagePath);
   const { extraction: extractionInput } = planFor(document.mimeType, bytes);
   const definitions = await getFieldDefinitions();
 

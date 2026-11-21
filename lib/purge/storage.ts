@@ -4,9 +4,9 @@ import { storage, DOCUMENTS_BUCKET } from "@/lib/supabase/service";
  * De bestanden van een atleet uit Storage halen.
  *
  * Twee bronnen, en dat is nodig. `medical.documents.storage_path` is de
- * administratie, maar een object kan in de bak staan zonder rij: de signed
- * upload-URL wordt uitgegeven voordat het document geregistreerd is (zie
- * app/api/intake/documents/upload-url/route.ts), dus een upload die halverwege
+ * administratie, maar een object kan in de bak staan zonder rij: een bestand
+ * wordt bewaard voordat het geregistreerd is (zie
+ * app/api/intake/documents/upload/route.ts), dus een upload die halverwege
  * strandde laat een bestand achter dat nergens genoemd wordt. Alleen de
  * administratie volgen laat precies die bestanden staan, en dat zijn medische
  * documenten.

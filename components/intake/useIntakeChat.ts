@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase/browser";
 import { takeFiles } from "@/lib/intake/handoff";
 import { useTranslations } from "next-intl";
 import type {
@@ -418,27 +417,25 @@ export function useIntakeChat() {
         ]);
 
         try {
-          const signed = await call<{ path: string; token: string; bucket: string }>(
-            "/api/intake/documents/upload-url",
-            {
-              filename: file.name,
-              mimeType: file.type || "text/plain",
-              byteSize: file.size,
+          // Het bestand zelf als body, zodat de server het kan wegschrijven
+          // terwijl het binnenkomt in plaats van het eerst in het geheugen te laden.
+          const response = await fetch("/api/intake/documents/upload", {
+            method: "POST",
+            headers: {
+              "Content-Type": file.type || "text/plain",
+              "X-Filename": encodeURIComponent(file.name),
             },
-          );
-
-          const supabase = createClient();
-          const upload = await supabase.storage
-            .from(signed.bucket)
-            .uploadToSignedUrl(signed.path, signed.token, file);
-          if (upload.error) throw new Error(upload.error.message);
+            body: file,
+          });
+          const uploaded = (await response.json()) as { path?: string; error?: string };
+          if (!response.ok || !uploaded.path) throw new Error(uploaded.error ?? "");
 
           // Bytes staan er. De server haalt er nu de paginatekst uit; dat is
           // het enige dat nog kan mislukken.
           patch({ state: "processing" });
 
           const result = await call<RegisterResult>("/api/intake/documents", {
-            path: signed.path,
+            path: uploaded.path,
             filename: file.name,
             mimeType: file.type || "text/plain",
           });
