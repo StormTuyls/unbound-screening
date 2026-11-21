@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
-import { createClient } from "@supabase/supabase-js";
-import { query, queryOne } from "@/lib/db/sql";
+import { query, queryOne, transaction } from "@/lib/db/sql";
+import { hashPassword } from "@/lib/auth/password";
 
 /**
  * Het team van de praktijk: wie er behandelt, en wie er niet meer.
@@ -154,63 +154,38 @@ export function generatePassword(): string {
 }
 
 /**
- * Een client met de admin-API van Auth erbij.
- *
- * De databankverbinding volstaat niet: gebruikers leven in `auth.users`, waar
- * geen enkele applicatierol bij mag. De service role heeft daar wel een eigen
- * API voor. shortcut: verdwijnt met Supabase Auth in fase 5c.
- */
-function authAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url) throw new Error("NEXT_PUBLIC_SUPABASE_URL ontbreekt");
-  if (!key) throw new Error("SUPABASE_SERVICE_ROLE_KEY ontbreekt");
-
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
-/**
  * Het hele team, gearchiveerde leden inbegrepen.
  *
- * Het e-mailadres komt uit `auth.users` via de admin-API en niet uit
- * `profiles`: dat is waar het staat, en het dupliceren zou betekenen dat een
- * adreswijziging op twee plekken moet gebeuren. Met een handvol behandelaars is
- * één lijstoproep goedkoper dan een kolom die uit de pas kan lopen.
+ * Het e-mailadres komt uit `accounts` en niet uit `profiles`: dat is waar het
+ * staat, en het dupliceren zou betekenen dat een adreswijziging op twee plekken
+ * moet gebeuren.
  */
 export async function listTeam(): Promise<TeamMember[]> {
   // Het aantal atleten per behandelaar in SQL, in plaats van elke atleetrij
   // op te halen om ze in TypeScript te tellen.
-  const [profiles, users] = await Promise.all([
-    query<{
+  const profiles = await query<{
       id: string;
       full_name: string | null;
       role: TeamMember["role"];
       practitioner_kind: PractitionerKind | null;
       archived_at: string | null;
       athletes: number;
+      email: string | null;
     }>(
-      `select p.id, p.full_name, p.role, p.practitioner_kind,
+      `select p.id, p.full_name, p.role, p.practitioner_kind, acc.email,
               to_json(p.archived_at) #>> '{}' as archived_at,
               (select count(*)::int from public.athletes a
                 where a.practitioner_id = p.id and a.deleted_at is null) as athletes
          from public.profiles p
+         left join public.accounts acc on acc.id = p.id
         where p.role in ('coach', 'admin')
         order by p.full_name`,
-    ),
-    authAdmin().auth.admin.listUsers({ perPage: 200 }),
-  ]);
-
-  const emails = new Map<string, string>();
-  for (const user of users.data?.users ?? []) {
-    if (user.email) emails.set(user.id, user.email);
-  }
+    );
 
   return profiles.map((row) => ({
     id: row.id,
     fullName: row.full_name,
-    email: emails.get(row.id) ?? null,
+    email: row.email,
     role: row.role,
     kind: row.practitioner_kind,
     archivedAt: row.archived_at,
@@ -237,34 +212,31 @@ export interface ExistingAccount {
 /**
  * Zoekt een bestaand account op adres.
  *
- * Via listUsers en niet via de foutmelding van createUser: die tekst is van
- * Supabase en kan tussen versies veranderen, en een controle die op een zin
- * leunt gaat stil kapot. Wie er echt staat is een feit dat we kunnen opvragen.
+ * Op de tabel zelf en niet via een foutmelding bij het aanmaken: wie er echt
+ * staat is een feit dat we kunnen opvragen.
  */
-async function findAccountByEmail(email: string): Promise<ExistingAccount | null> {
-  const wanted = email.trim().toLowerCase();
-  const users = await authAdmin().auth.admin.listUsers({ perPage: 200 });
-  const match = users.data?.users.find((user) => user.email?.toLowerCase() === wanted);
-  if (!match) return null;
-
+async function findExistingAccount(email: string): Promise<ExistingAccount | null> {
   const row = await queryOne<{
+    id: string;
     full_name: string | null;
     role: ExistingAccount["role"] | null;
     athlete: boolean;
   }>(
-    `select p.full_name, p.role,
+    `select acc.id, p.full_name, p.role,
             exists (select 1 from public.athletes a
-                     where a.profile_id = $1 and a.deleted_at is null) as athlete
-       from (select $1::uuid as id) u
-       left join public.profiles p on p.id = u.id`,
-    [match.id],
+                     where a.profile_id = acc.id and a.deleted_at is null) as athlete
+       from public.accounts acc
+       left join public.profiles p on p.id = acc.id
+      where acc.email = lower(trim($1))`,
+    [email],
   );
+  if (!row) return null;
 
   return {
-    id: match.id,
-    fullName: row?.full_name ?? null,
-    role: row?.role ?? "athlete",
-    athlete: row?.athlete ?? false,
+    id: row.id,
+    fullName: row.full_name,
+    role: row.role ?? "athlete",
+    athlete: row.athlete,
   };
 }
 
@@ -310,11 +282,10 @@ export type CreateResult =
   | { ok: false; error: string; taken?: ExistingAccount };
 
 /**
- * Een behandelaar aanmaken: gebruiker in Auth, rij in profiles.
+ * Een behandelaar aanmaken: account en profiel, in één transactie.
  *
- * Twee stappen, want er hangt geen trigger aan auth.users. Zonder die tweede
- * stap kan iemand inloggen en ziet hij niets, want checkCoach() leest de rol uit
- * profiles en niet uit het token.
+ * Samen of niet: een account zonder profiel kan inloggen en ziet niets, want
+ * checkCoach() leest de rol uit profiles.
  *
  * Het wachtwoord wordt hier gezet en één keer teruggegeven. Geen
  * uitnodigingsmail: die zou het aanmaken laten afhangen van een mailserver, en
@@ -328,18 +299,26 @@ export async function createPractitioner(input: {
   kind: PractitionerKind;
   role: PractitionerRole;
 }): Promise<CreateResult> {
-  const admin = authAdmin();
-
-  // Meteen bevestigd: de praktijk maakt het account aan, dus wachten op een
-  // bevestigingsmail zit alleen in de weg.
   const password = generatePassword();
-  const created = await admin.auth.admin.createUser({
-    email: input.email,
-    password,
-    email_confirm: true,
-  });
+  const passwordHash = await hashPassword(password);
 
-  if (created.error || !created.data.user) {
+  try {
+    const userId = await transaction(async (run) => {
+      const [account] = await run<{ id: string }>(
+        "insert into public.accounts (email, password_hash) values (lower(trim($1)), $2) returning id",
+        [input.email, passwordHash],
+      );
+      await run(
+        `insert into public.profiles (id, role, full_name, locale, practitioner_kind)
+         values ($1, $2, $3, 'nl', $4)`,
+        [account.id, input.role, input.fullName, input.kind],
+      );
+      return account.id;
+    });
+    return { ok: true, id: userId, password };
+  } catch (error) {
+    if ((error as { code?: string }).code !== "23505") throw error;
+
     // Bestaat het adres al, dan is dit geen scherm om een wachtwoord mee te
     // overschrijven: dat is een ander soort handeling met een ander risico.
     //
@@ -348,33 +327,13 @@ export async function createPractitioner(input: {
     // collega te beletten te worden: atleet-zijn zit in public.athletes, de rol
     // zegt alleen wat iemand als staf mag. Dus zoeken we op wie het is en geven
     // we dat terug, zodat het scherm kan vragen of die toegang erbij mag.
-    const taken = await findAccountByEmail(input.email);
+    const taken = await findExistingAccount(input.email);
     return {
       ok: false,
-      error: created.error?.message ?? "gebruiker aanmaken mislukt",
+      error: "A user with this email address has already been registered",
       ...(taken ? { taken } : {}),
     };
   }
-
-  const userId = created.data.user.id;
-
-  try {
-    await query(
-      `insert into public.profiles (id, role, full_name, locale, practitioner_kind)
-       values ($1, $2, $3, 'nl', $4)
-       on conflict (id) do update
-         set role = excluded.role, full_name = excluded.full_name,
-             locale = excluded.locale, practitioner_kind = excluded.practitioner_kind`,
-      [userId, input.role, input.fullName, input.kind],
-    );
-  } catch (error) {
-    // De gebruiker bestaat nu wel en het profiel niet, en dan kan hij inloggen
-    // zonder iets te zien. Terugdraaien is hier beter dan een half account.
-    await admin.auth.admin.deleteUser(userId);
-    return { ok: false, error: `profiel opslaan mislukt: ${(error as Error).message}` };
-  }
-
-  return { ok: true, id: userId, password };
 }
 
 export type UpdateResult = { ok: true } | { ok: false; error: string };

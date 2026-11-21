@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/browser";
 import { AuthShell } from "@/components/auth/AuthShell";
 
 /**
@@ -33,12 +32,13 @@ export function CoachLogin({ next }: { next: string | null }) {
     setBusy(true);
     setError(null);
     try {
-      const supabase = createClient();
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
+      const result = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password }),
       });
-      if (signInError) throw new Error(t("noMatch"));
+      if (result.status === 429) throw new Error(t("throttled"));
+      if (!result.ok) throw new Error(t("noMatch"));
 
       // Taalvoorkeur uit het profiel in het cookie zetten. Een cookie hangt aan
       // een browser, een voorkeur aan een persoon: wie op een nieuw toestel

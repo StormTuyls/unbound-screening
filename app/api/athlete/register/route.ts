@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { LOCALE_COOKIE, toLocale } from "@/lib/i18n/locale";
-import { createServerSupabase } from "@/lib/supabase/server";
+import { currentAccount } from "@/lib/auth/session";
 import { badRequest, handleError } from "@/lib/http";
 import { ensureAthleteForUser } from "@/lib/intake/athlete";
 import { consentContext, recordAccountConsent } from "@/lib/intake/consent";
@@ -20,10 +20,9 @@ import { consentContext, recordAccountConsent } from "@/lib/intake/consent";
  */
 export async function POST(request: Request) {
   try {
-    const supabase = await createServerSupabase();
-    const { data: auth, error } = await supabase.auth.getUser();
+    const account = await currentAccount();
 
-    if (error || !auth.user) {
+    if (!account) {
       return NextResponse.json({ error: "Please sign in again." }, { status: 401 });
     }
 
@@ -52,8 +51,8 @@ export async function POST(request: Request) {
     }
 
     const athlete = await ensureAthleteForUser({
-      userId: auth.user.id,
-      email: auth.user.email ?? null,
+      userId: account.id,
+      email: account.email,
       fullName,
       locale,
     });

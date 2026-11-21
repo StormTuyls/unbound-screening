@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
 import { IntakeAuthError, IntakeLockedError } from "@/lib/errors";
 import { queryOne } from "@/lib/db/sql";
-import { createServerSupabase } from "@/lib/supabase/server";
+import { currentAccount } from "@/lib/auth/session";
 
 /**
  * Sessie voor de publieke intake.
@@ -92,9 +92,8 @@ export async function currentIntake(): Promise<IntakeSession | null> {
   const ownerId = data.profile_id;
 
   if (ownerId !== null) {
-    const supabase = await createServerSupabase();
-    const { data: auth } = await supabase.auth.getUser();
-    if (auth.user?.id !== ownerId) return null;
+    const account = await currentAccount();
+    if (account?.id !== ownerId) return null;
   }
 
   return {

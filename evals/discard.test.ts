@@ -4,7 +4,7 @@ import { loadEnv } from "../scripts/env";
 
 loadEnv();
 
-import { appDb } from "../scripts/postgrest";
+import { admin } from "../scripts/adminDb";
 import { existsSync, readdirSync } from "node:fs";
 import { resolveDocumentPath, writeDocument } from "../lib/documents/store";
 import { query } from "../lib/db/sql";
@@ -41,20 +41,17 @@ import { discardIntake } from "../lib/intake/discard";
  * Draaien: npm run test:discard (vraagt een lokale stack).
  */
 
-const db = appDb();
-
 async function* once(bytes: Uint8Array) {
   yield bytes;
 }
 
 async function makeAthlete(basis: string): Promise<string> {
-  const { data, error } = await db
-    .from("athletes")
-    .insert({ locale: "nl", retention_mode: "indefinite", retention_basis: basis })
-    .select("id")
-    .single();
-  if (error || !data) throw new Error(`atleet aanmaken mislukt: ${error?.message}`);
-  return data.id as string;
+  const [row] = await admin<{ id: string }>(
+    `insert into public.athletes (locale, retention_mode, retention_basis)
+     values ('nl', 'indefinite', $1) returning id`,
+    [basis],
+  );
+  return row.id;
 }
 
 async function makeIntake(
@@ -62,20 +59,14 @@ async function makeIntake(
   status: "draft" | "submitted",
 ): Promise<string> {
   const { hash } = newToken();
-  const { data, error } = await db
-    .from("intakes")
-    .insert({
-      athlete_id: athleteId,
-      locale: "nl",
-      access_token_hash: hash,
-      status,
-      consent_granted_at: new Date().toISOString(),
-      submitted_at: status === "submitted" ? new Date().toISOString() : null,
-    })
-    .select("id")
-    .single();
-  if (error || !data) throw new Error(`intake aanmaken mislukt: ${error?.message}`);
-  return data.id as string;
+  const [row] = await admin<{ id: string }>(
+    `insert into public.intakes
+       (athlete_id, locale, access_token_hash, status, consent_granted_at, submitted_at)
+     values ($1, 'nl', $2, $3::text::public.intake_status, now(), case when $3::text = 'submitted' then now() end)
+     returning id`,
+    [athleteId, hash, status],
+  );
+  return row.id;
 }
 
 async function count(sql: string, params: unknown[]): Promise<number> {
@@ -83,16 +74,8 @@ async function count(sql: string, params: unknown[]): Promise<number> {
   return Number(rows[0]?.n ?? 0);
 }
 
-/**
- * public.chat_messages is voor de directe verbinding niet leesbaar: rol
- * intake_server heeft rechten op medical plus een paar leesrechten in public,
- * en deze tabel hoort daar niet bij. Die gaat dus langs PostgREST, net als in
- * purge.test.ts.
- */
 async function countChat(intakeId: string): Promise<number> {
-  const { data, error } = await db.from("chat_messages").select("id").eq("intake_id", intakeId);
-  if (error) throw new Error(`chatberichten tellen mislukt: ${error.message}`);
-  return data?.length ?? 0;
+  return count("select count(*) as n from public.chat_messages where intake_id = $1", [intakeId]);
 }
 
 async function main() {
@@ -100,10 +83,11 @@ async function main() {
   const athleteId = await makeAthlete("test: discard-pad");
   const intakeId = await makeIntake(athleteId, "draft");
 
-  await db.from("chat_messages").insert([
-    { intake_id: intakeId, role: "assistant", content: "Wat is je volledige naam?" },
-    { intake_id: intakeId, role: "user", content: "Test Atleet" },
-  ]);
+  await admin(
+    `insert into public.chat_messages (intake_id, role, content)
+     values ($1, 'assistant', 'Wat is je volledige naam?'), ($1, 'user', 'Test Atleet')`,
+    [intakeId],
+  );
 
   await addProposals(intakeId, [
     {

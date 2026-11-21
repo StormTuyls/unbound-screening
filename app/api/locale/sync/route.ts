@@ -3,7 +3,7 @@ import { apiMessages } from "@/lib/i18n/server";
 import { cookies } from "next/headers";
 import { handleError } from "@/lib/http";
 import { queryOne } from "@/lib/db/sql";
-import { createServerSupabase } from "@/lib/supabase/server";
+import { currentAccount } from "@/lib/auth/session";
 import {
   DEFAULT_LOCALE,
   LOCALE_COOKIE,
@@ -29,16 +29,15 @@ import {
 export async function POST() {
   try {
     const t = await apiMessages();
-    const supabase = await createServerSupabase();
-    const { data: auth } = await supabase.auth.getUser();
+    const account = await currentAccount();
 
-    if (!auth.user) {
+    if (!account) {
       return NextResponse.json({ error: t("noSession") }, { status: 401 });
     }
 
     const profile = await queryOne<{ locale: string | null }>(
       "select locale from public.profiles where id = $1",
-      [auth.user.id],
+      [account.id],
     );
 
     const locale = toLocale(profile?.locale ?? DEFAULT_LOCALE);

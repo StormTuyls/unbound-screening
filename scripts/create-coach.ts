@@ -2,7 +2,7 @@ import { loadEnv } from "./env";
 loadEnv();
 
 import { randomBytes } from "node:crypto";
-import { createClient } from "@supabase/supabase-js";
+import { adminTransaction, closeAdmin } from "./adminDb";
 
 /**
  * Maakt een behandelaar aan.
@@ -11,23 +11,19 @@ import { createClient } from "@supabase/supabase-js";
  * atleet mag lezen, wordt door de praktijk aangewezen en niet door wie het
  * formulier vindt. Daarom is dit een script en geen pagina.
  *
- * Twee stappen, want er hangt geen trigger aan auth.users: de gebruiker in
- * auth, en daarna de rij in public.profiles met de rol. Zonder die tweede stap
- * kan iemand inloggen en ziet hij niets, want requireCoach() leest de rol uit
- * profiles en niet uit het token.
+ * Account en profiel samen, in één transactie: zonder profiel kan iemand
+ * inloggen en ziet hij niets, want requireCoach() leest de rol uit profiles.
  *
- * Het wachtwoord wordt hier gezet en één keer afgedrukt. Er is nog geen
- * herstelflow per e-mail, dus dit script is ook de manier om een wachtwoord
- * opnieuw te zetten. Voor een praktijk met een handvol behandelaars is dat een
- * werkbare afspraak; voor echt gebruik hoort er een herstelmail bij, en dat
- * staat als openstaand punt in de README.
+ * Het wachtwoord wordt hier gezet en één keer afgedrukt. Bestaat het account al,
+ * dan zet dit script het wachtwoord opnieuw: de herstelmail vraagt een werkende
+ * SMTP, en dit is de weg voor wie er helemaal niet meer in komt.
  *
  * Het vakgebied bepaalt of deze behandelaar in de keuzelijst van een atleet
  * verschijnt (public.profiles.practitioner_kind). Het staat los van de rol: de
  * rol zegt wat iemand mag, het vakgebied wat hij doet. Laat je het weg, dan
  * kan hij wel inloggen en dossiers nakijken, maar kiest niemand hem.
  *
- * Sinds er een teamscherm is (/coach/team) is dit script niet meer de enige
+ * Sinds er een teamscherm is (/praktijk/team) is dit script niet meer de enige
  * weg: een admin maakt daar collega's aan. Het blijft bestaan voor twee dingen
  * die geen scherm horen te hebben. Het eerste is de bootstrap, want het
  * teamscherm vraagt een admin en die moet ergens vandaan komen; een pagina die
@@ -63,49 +59,32 @@ async function main() {
     throw new Error("wachtwoord moet minstens 12 tekens zijn");
   }
 
-  const admin = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, persistSession: false } },
-  );
+  // Zelfde hash als de app, zodat dit wachtwoord meteen werkt.
+  const { hashPassword } = await import("../lib/auth/password");
+  const passwordHash = await hashPassword(password);
+  const address = email.trim().toLowerCase();
 
-  // Meteen bevestigd: er is geen uitnodigingsmail in deze opzet, en een account
-  // dat niet kan inloggen tot iemand een mail opent is voor een praktijk die
-  // zelf de accounts aanmaakt alleen maar in de weg.
-  const created = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
+  const userId = await adminTransaction(async (run) => {
+    const [account] = await run<{ id: string; created: boolean }>(
+      `insert into public.accounts (email, password_hash) values ($1, $2)
+       on conflict (email) do update set password_hash = excluded.password_hash
+       returning id, (xmax = 0) as created`,
+      [address, passwordHash],
+    );
+    if (!account.created) console.log("account bestond al: rol en wachtwoord bijgewerkt");
+
+    await run(
+      `insert into public.profiles (id, role, full_name, locale, practitioner_kind)
+       values ($1, $2, $3, 'nl', $4)
+       on conflict (id) do update
+         set role = excluded.role, full_name = excluded.full_name,
+             practitioner_kind = excluded.practitioner_kind`,
+      [account.id, asAdmin ? "admin" : "coach", fullName ?? null, kind ?? null],
+    );
+    // Wie hier een nieuw wachtwoord krijgt, ligt er overal elders uit.
+    await run("delete from public.sessions where account_id = $1", [account.id]);
+    return account.id;
   });
-
-  let userId = created.data.user?.id;
-
-  if (created.error) {
-    // Bestaat hij al, dan is dit script bedoeld om de rol goed te zetten.
-    const existing = await admin.auth.admin.listUsers();
-    const match = existing.data.users.find((user) => user.email === email);
-    if (!match) throw new Error(`gebruiker aanmaken mislukt: ${created.error.message}`);
-    userId = match.id;
-    // Bestond hij al, dan is dit script ook de manier om het wachtwoord opnieuw
-    // te zetten, want er is nog geen herstelflow.
-    const updated = await admin.auth.admin.updateUserById(match.id, { password });
-    if (updated.error) throw new Error(`wachtwoord zetten mislukt: ${updated.error.message}`);
-    console.log("gebruiker bestond al: rol en wachtwoord bijgewerkt");
-  }
-
-  if (!userId) throw new Error("geen gebruiker-id");
-
-  const { error } = await admin
-    .from("profiles")
-    .upsert({
-      id: userId,
-      role: asAdmin ? "admin" : "coach",
-      full_name: fullName ?? null,
-      locale: "nl",
-      practitioner_kind: kind ?? null,
-    });
-
-  if (error) throw new Error(`profiel opslaan mislukt: ${error.message}`);
 
   console.log(`${asAdmin ? "admin" : "coach"} klaar: ${email} (${userId})`);
   console.log(
@@ -116,9 +95,10 @@ async function main() {
   console.log(`wachtwoord: ${password}`);
   console.log(
     asAdmin
-      ? "inloggen via /coach/login. Deze mag het team beheren op /coach/team."
-      : "inloggen via /coach/login. Dit wachtwoord staat hier één keer.",
+      ? "inloggen via /praktijk/login. Deze mag het team beheren op /praktijk/team."
+      : "inloggen via /praktijk/login. Dit wachtwoord staat hier één keer.",
   );
+  await closeAdmin();
   process.exit(0);
 }
 

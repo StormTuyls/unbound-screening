@@ -1,4 +1,4 @@
-import { createServerSupabase } from "@/lib/supabase/server";
+import { currentAccount } from "@/lib/auth/session";
 import { queryOne } from "@/lib/db/sql";
 import { CoachAuthError } from "@/lib/errors";
 
@@ -45,10 +45,8 @@ export type CoachCheck =
   | { kind: "not-a-coach" };
 
 export async function checkCoach(): Promise<CoachCheck> {
-  const supabase = await createServerSupabase();
-
-  const { data: auth, error } = await supabase.auth.getUser();
-  if (error || !auth.user) return { kind: "anonymous" };
+  const account = await currentAccount();
+  if (!account) return { kind: "anonymous" };
 
   // De rol staat in public.profiles en niet in de tokenclaims. Bewust: een rol
   // in een token blijft geldig tot het verloopt, dus wie zijn coachrol verliest
@@ -56,7 +54,7 @@ export async function checkCoach(): Promise<CoachCheck> {
   // profiles_select_self deed: dit leest nooit iemand anders.
   const profile = await queryOne<{ role: string; full_name: string | null }>(
     "select role, full_name from public.profiles where id = $1",
-    [auth.user.id],
+    [account.id],
   );
 
   if (!profile || (profile.role !== "coach" && profile.role !== "admin")) {
@@ -66,10 +64,10 @@ export async function checkCoach(): Promise<CoachCheck> {
   return {
     kind: "coach",
     coach: {
-      id: auth.user.id,
+      id: account.id,
       role: profile.role,
       fullName: profile.full_name ?? null,
-      email: auth.user.email ?? null,
+      email: account.email,
     },
   };
 }

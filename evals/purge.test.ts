@@ -4,8 +4,8 @@ import { loadEnv } from "../scripts/env";
 
 loadEnv();
 
-import { createClient } from "@supabase/supabase-js";
-import { appDb } from "../scripts/postgrest";
+import { admin as adminSql } from "../scripts/adminDb";
+import { createAccount, issueToken } from "../lib/auth/accounts";
 import { existsSync } from "node:fs";
 import { resolveDocumentPath, writeDocument } from "../lib/documents/store";
 import { query } from "../lib/db/sql";
@@ -36,13 +36,6 @@ import { runPurgeJob } from "../lib/purge/purge";
  * achtergebleven" mag niet per ongeluk "het spoor is gewist" betekenen.
  */
 
-const admin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false, autoRefreshToken: false } },
-);
-
-const db = appDb();
 const PAGE_TEXT = `Verslag onderzoek
 
 Patient: Purge Testatleet
@@ -59,48 +52,37 @@ async function count(sql: string, values: unknown[]): Promise<number> {
 // --- opbouw -----------------------------------------------------------------
 
 const email = `purge-${randomUUID()}@example.invalid`;
-const { data: created, error: userError } = await admin.auth.admin.createUser({
-  email,
-  password: `Purge-${randomUUID()}`,
-  email_confirm: true,
-});
-if (userError) throw new Error(`gebruiker maken mislukt: ${userError.message}`);
-const userId = created.user!.id;
+// Het account zoals de app het maakt, met een open sessie en een
+// openstaande herstellink: die moeten na de purge allebei weg zijn.
+const userId = await createAccount(email, `Purge-${randomUUID()}`);
+await adminSql(
+  `insert into public.sessions (token_hash, account_id, expires_at)
+   values ($1, $2, now() + interval '1 day')`,
+  [randomUUID(), userId],
+);
+await issueToken(userId, "reset", 1);
 
-const { error: profileError } = await db
-  .from("profiles")
-  .upsert({ id: userId, role: "athlete", locale: "nl" });
-if (profileError) throw new Error(`profiel maken mislukt: ${profileError.message}`);
+await adminSql("insert into public.profiles (id, role, locale) values ($1, 'athlete', 'nl')", [userId]);
 
-const { data: athleteRow, error: athleteError } = await db
-  .from("athletes")
-  .insert({
-    profile_id: userId,
-    full_name: "Purge Testatleet",
-    email,
-    locale: "nl",
-    retention_basis: "purge-test",
-  })
-  .select("id")
-  .single();
-if (athleteError) throw new Error(`atleet maken mislukt: ${athleteError.message}`);
-const athleteId = athleteRow!.id as string;
+const [athleteRow] = await adminSql<{ id: string }>(
+  `insert into public.athletes (profile_id, full_name, email, locale, retention_basis)
+   values ($1, 'Purge Testatleet', $2, 'nl', 'purge-test') returning id`,
+  [userId, email],
+);
+const athleteId = athleteRow.id;
 
 async function makeIntake(submitted: boolean): Promise<string> {
   const { hash } = newToken();
-  const { data, error } = await db
-    .from("intakes")
-    .insert({
-      athlete_id: athleteId,
-      locale: "nl",
-      access_token_hash: hash,
-      consent_granted_at: new Date().toISOString(),
-      ...(submitted ? { status: "submitted", submitted_at: new Date().toISOString() } : {}),
-    })
-    .select("id")
-    .single();
-  if (error) throw new Error(`intake maken mislukt: ${error.message}`);
-  return data!.id as string;
+  const [row] = await adminSql<{ id: string }>(
+    `insert into public.intakes
+       (athlete_id, locale, access_token_hash, consent_granted_at, status, submitted_at)
+     values ($1, 'nl', $2, now(),
+             case when $3 then 'submitted' else 'draft' end::public.intake_status,
+             case when $3 then now() end)
+     returning id`,
+    [athleteId, hash, submitted],
+  );
+  return row.id;
 }
 
 const submittedIntake = await makeIntake(true);
@@ -118,15 +100,18 @@ const consents: Array<{
   { athlete_id: athleteId, intake_id: submittedIntake, consent_version: "test", purposes: { share: true } },
 ];
 for (const consent of consents) {
-  const { error } = await db.from("consents").insert(consent);
-  if (error) throw new Error(`toestemming maken mislukt: ${error.message}`);
+  await adminSql(
+    `insert into public.consents (athlete_id, intake_id, consent_version, purposes, ip, user_agent, locale)
+     values ($1, $2, $3, $4::jsonb, '127.0.0.1', 'purge-test', 'nl')`,
+    [consent.athlete_id, consent.intake_id, consent.consent_version, JSON.stringify(consent.purposes)],
+  );
 }
 
-const { error: chatError } = await db.from("chat_messages").insert([
-  { intake_id: submittedIntake, role: "assistant", content: "Hoe groot ben je?" },
-  { intake_id: submittedIntake, role: "user", content: "176 cm" },
-]);
-if (chatError) throw new Error(`gesprek maken mislukt: ${chatError.message}`);
+await adminSql(
+  `insert into public.chat_messages (intake_id, role, content)
+   values ($1, 'assistant', 'Hoe groot ben je?'), ($1, 'user', '176 cm')`,
+  [submittedIntake],
+);
 
 async function* once(bytes: Uint8Array) {
   yield bytes;
@@ -398,20 +383,18 @@ for (const [table, n] of leftovers) {
   assert.equal(n, 0, `${table} heeft nog ${n} rijen van de verwijderde atleet`);
 }
 
-// Deze drie zijn voor de directe verbinding niet leesbaar, dus via PostgREST.
-for (const [table, filter] of [
-  ["consents", db.from("consents").select("id").eq("athlete_id", athleteId)],
-  ["chat_messages", db.from("chat_messages").select("id").in("intake_id", intakeIds)],
-  ["profiles", db.from("profiles").select("id").eq("id", userId)],
+// Het account met alles wat eraan hing: profiel, sessies, eenmalige links.
+for (const [table, sql, values] of [
+  ["consents", "select count(*) as n from public.consents where athlete_id = $1", [athleteId]],
+  ["chat_messages", "select count(*) as n from public.chat_messages where intake_id = any($1::uuid[])", [intakeIds]],
+  ["profiles", "select count(*) as n from public.profiles where id = $1", [userId]],
+  ["accounts", "select count(*) as n from public.accounts where id = $1", [userId]],
+  ["sessions", "select count(*) as n from public.sessions where account_id = $1", [userId]],
+  ["account_tokens", "select count(*) as n from public.account_tokens where account_id = $1", [userId]],
 ] as const) {
-  const { data, error } = await filter;
-  if (error) throw new Error(`${table} opvragen mislukt: ${error.message}`);
-  assert.equal(data?.length ?? 0, 0, `public.${table} heeft nog rijen`);
+  const [row] = await adminSql<{ n: string }>(sql, [...values]);
+  assert.equal(Number(row.n), 0, `public.${table} heeft nog rijen`);
 }
-
-// Het inlogaccount.
-const { data: goneUser } = await admin.auth.admin.getUserById(userId);
-assert.equal(goneUser?.user ?? null, null, "het inlogaccount bestaat nog");
 
 // De documentenmap, inclusief het weesbestand dat in geen enkele tabel stond.
 for (const path of [...storagePaths, orphanPath]) {

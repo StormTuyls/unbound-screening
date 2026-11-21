@@ -1,4 +1,4 @@
-import { createServerSupabase } from "@/lib/supabase/server";
+import { currentAccount } from "@/lib/auth/session";
 import { queryOne } from "@/lib/db/sql";
 import { preConsentUntil } from "@/lib/intake/retention";
 
@@ -26,7 +26,7 @@ import { preConsentUntil } from "@/lib/intake/retention";
  */
 
 export interface AthleteIdentity {
-  /** auth.users.id, tevens profiles.id. */
+  /** public.accounts.id, tevens profiles.id. */
   userId: string;
   /** public.athletes.id. De medische kant hangt hieraan, niet aan de user. */
   athleteId: string;
@@ -36,10 +36,8 @@ export interface AthleteIdentity {
 }
 
 export async function currentAthlete(): Promise<AthleteIdentity | null> {
-  const supabase = await createServerSupabase();
-
-  const { data: auth, error } = await supabase.auth.getUser();
-  if (error || !auth.user) return null;
+  const account = await currentAccount();
+  if (!account) return null;
 
   // Het filter op profile_id doet hier het werk dat RLS anders zou doen.
   const athlete = await queryOne<{
@@ -50,15 +48,15 @@ export async function currentAthlete(): Promise<AthleteIdentity | null> {
   }>(
     `select id, full_name, email, locale from public.athletes
       where profile_id = $1 and deleted_at is null`,
-    [auth.user.id],
+    [account.id],
   );
 
   if (!athlete) return null;
 
   return {
-    userId: auth.user.id,
+    userId: account.id,
     athleteId: athlete.id,
-    email: athlete.email ?? auth.user.email ?? null,
+    email: athlete.email ?? account.email,
     fullName: athlete.full_name,
     locale: (athlete.locale as "nl" | "en" | null) ?? "en",
   };

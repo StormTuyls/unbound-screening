@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
-import { createClient } from "@/lib/supabase/browser";
 import { AuthShell } from "@/components/auth/AuthShell";
 
 /**
@@ -33,12 +32,10 @@ export function ForgotPassword({ backTo }: { backTo: string }) {
   async function submit() {
     setBusy(true);
     try {
-      const supabase = createClient();
-      await supabase.auth.resetPasswordForEmail(email.trim(), {
-        // De link landt op de callback, die de sessie opzet en daarna
-        // doorstuurt. Zelfde pad als een magic link, dus één plek waar de
-        // twee vormen van Supabase-links worden afgehandeld.
-        redirectTo: `${window.location.origin}/auth/callback?next=/auth/reset`,
+      await fetch("/api/auth/forgot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
       });
     } catch {
       // Bewust stil. Zie de toelichting hierboven: het antwoord mag niet

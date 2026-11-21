@@ -1,8 +1,8 @@
 # De app als container, met de standalone-uitvoer van Next: geen volledige
 # node_modules in de image, alleen wat de server echt laadt.
 #
-# NEXT_PUBLIC_* worden bij het bouwen in de code gebakken, ook in de servercode,
-# dus die komen als build-args binnen. Al de rest (sleutels, wachtwoorden) gaat
+# NEXT_PUBLIC_APP_URL wordt bij het bouwen in de code gebakken, ook in de
+# servercode, dus die komt als build-arg binnen. Al de rest (sleutels, wachtwoorden) gaat
 # er pas bij het starten in, via env_file in compose.yaml.
 
 FROM node:24-alpine AS deps
@@ -14,8 +14,6 @@ FROM node:24-alpine AS build
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-ARG NEXT_PUBLIC_SUPABASE_URL
-ARG NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 ARG NEXT_PUBLIC_APP_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build

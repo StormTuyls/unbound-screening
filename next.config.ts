@@ -31,6 +31,43 @@ const nextConfig: NextConfig = {
    * browser het oude pad laten onthouden, en deze pagina's staan toch op
    * noindex, dus er valt geen vindbaarheid mee te winnen.
    */
+  /**
+   * Nooit cachen wat achter een login staat.
+   *
+   * Stond in proxy.ts, dat daarnaast de Supabase-sessie verlengde. Die sessie
+   * bestaat niet meer (lib/auth/session.ts), dus de proxy ook niet; dit is wat
+   * ervan overbleef. Bijvangst: geen proxy meer betekent ook geen buffer van
+   * 10 MB meer op elke aanvraag.
+   *
+   * /api/health en /api/cron horen er niet bij: geen gebruiker, geen dossier.
+   */
+  async headers() {
+    const privatePaths = [
+      "/",
+      "/home/:path*",
+      "/start/:path*",
+      "/consent/:path*",
+      "/intake/:path*",
+      "/profile/:path*",
+      "/report/:path*",
+      "/metingen/:path*",
+      "/praktijk/:path*",
+      "/review/:path*",
+      "/auth/:path*",
+      "/api/auth/:path*",
+      "/api/athlete/:path*",
+      "/api/coach/:path*",
+      "/api/intake/:path*",
+      "/api/review/:path*",
+      "/api/locale/:path*",
+      "/api/purge",
+    ];
+    return privatePaths.map((source) => ({
+      source,
+      headers: [{ key: "Cache-Control", value: "private, no-store" }],
+    }));
+  },
+
   async redirects() {
     return [
       { source: "/coach", destination: "/praktijk", permanent: false },

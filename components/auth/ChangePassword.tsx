@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { useTranslations } from "next-intl";
-import { createClient } from "@/lib/supabase/browser";
 import { SectionLabel } from "@/components/intake/SectionLabel";
 import { CheckIcon } from "@/components/intake/icons";
 
@@ -45,19 +44,23 @@ export function ChangePassword({ email }: { email: string | null }) {
     setDone(false);
 
     try {
-      const supabase = createClient();
-
-      // Eerst bewijzen dat je het oude wachtwoord kent. Dit vervangt de sessie
-      // door een nieuwe van dezelfde gebruiker, dus er verandert niets aan wie
-      // je bent.
-      const { error: reauth } = await supabase.auth.signInWithPassword({
-        email,
-        password: current,
+      // De server controleert eerst het huidige wachtwoord, en logt daarna
+      // elke andere browser uit. Deze krijgt een nieuwe sessie.
+      const response = await fetch("/api/auth/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ current, next }),
       });
-      if (reauth) throw new Error(t("wrongCurrent"));
-
-      const { error: update } = await supabase.auth.updateUser({ password: next });
-      if (update) throw new Error(update.message);
+      if (!response.ok) {
+        const { error: reason } = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(
+          reason === "wrongCurrent"
+            ? t("wrongCurrent")
+            : reason === "tooShort"
+              ? t("tooShort")
+              : t("changeFailed"),
+        );
+      }
 
       setDone(true);
       setCurrent("");

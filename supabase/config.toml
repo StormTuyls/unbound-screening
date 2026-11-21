@@ -256,16 +256,8 @@ otp_expiry = 3600
 # admin_email = "admin@email.com"
 # sender_name = "Admin"
 
-# De uitnodiging van een atleet moet naar /auth/callback met een token_hash, en
-# niet naar de verify-URL van Supabase: die zet de tokens in de fragment van de
-# URL en dan ziet onze serverroute niets. Zie supabase/templates/invite.html.
-#
-# LET OP: dit bestand stuurt alleen de lokale stack. Op het gehoste project staat
-# dezelfde template onder Authentication > Email Templates, en die moet daar
-# handmatig gelijkgetrokken worden.
-[auth.email.template.invite]
-subject = "Je intake staat klaar / Your intake is ready"
-content_path = "./supabase/templates/invite.html"
+# Uitnodigingen en herstelmails verstuurt de app zelf sinds fase 5c
+# (lib/auth/mail.ts); Supabase Auth wordt niet meer gebruikt.
 
 # Uncomment to customize notification email template
 # [auth.email.notification.password_changed]

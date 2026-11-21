@@ -4,7 +4,6 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { createClient } from "@/lib/supabase/browser";
 import { NightShell } from "@/components/athlete/NightShell";
 import { ArrowRightIcon, CheckIcon } from "@/components/athlete/icons";
 
@@ -50,14 +49,17 @@ export function AthleteAuth({
     setError(null);
 
     try {
-      const supabase = createClient();
+      const post = (path: string, body: unknown) =>
+        fetch(path, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
 
       if (mode === "register") {
-        const { error: signUpError } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-        });
-        if (signUpError) throw new Error(signUpError.message);
+        const created = await post("/api/auth/register", { email: email.trim(), password });
+        if (created.status === 409) throw new Error(t("emailTaken"));
+        if (!created.ok) throw new Error(t("signupFailed"));
 
         // Profiel en atleetrij kan de browser niet zelf maken: er is geen
         // insert-policy op profiles en athletes_write is alleen voor staf.
@@ -72,12 +74,10 @@ export function AthleteAuth({
           throw new Error((await response.json()).error ?? t("signupFailed"));
         }
       } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
+        const signedIn = await post("/api/auth/login", { email: email.trim(), password });
+        if (signedIn.status === 429) throw new Error(t("throttled"));
         // Niet uitsplitsen welk deel fout was: dat vertelt of een adres bestaat.
-        if (signInError) throw new Error(t("noMatch"));
+        if (!signedIn.ok) throw new Error(t("noMatch"));
       }
 
       // Taalvoorkeur uit het profiel in het cookie zetten. Een cookie hangt aan

@@ -314,7 +314,9 @@
     "coachIntro": "Meld je aan met je account van de praktijk. Waar je uitkomt hangt af van wie je bent.",
     "coachFooter": "Accounts worden door de praktijk aangemaakt. Vraag een beheerder om je wachtwoord opnieuw in te stellen als je niet binnen komt.",
     "toCoach": "Ben je behandelaar? Meld je hier aan",
-    "toAthlete": "Ben je nieuw? Begin bij je intake"
+    "toAthlete": "Ben je nieuw? Begin bij je intake",
+    "throttled": "Te veel pogingen. Wacht een kwartier en probeer het opnieuw.",
+    "emailTaken": "Er bestaat al een account met dit e-mailadres. Meld je aan, of vraag een nieuw wachtwoord."
   },
   "athleteReport": {
     "title": "Intakerapport",
@@ -852,5 +854,11 @@
     "rightsNote": "Je hebt altijd recht op je volledige gegevens. Vraag ernaar bij de praktijk.",
     "left": "links",
     "right": "rechts"
+  },
+  "mail": {
+    "resetSubject": "Je nieuwe wachtwoord voor unbound",
+    "resetBody": "Iemand vroeg een nieuw wachtwoord aan voor dit e-mailadres. Was jij dat, kies dan hier een nieuw wachtwoord:\n\n{link}\n\nDe link werkt één uur en één keer. Vroeg je niets aan, dan hoef je niets te doen.",
+    "inviteSubject": "Je bent uitgenodigd bij unbound",
+    "inviteBody": "Je praktijk nodigt je uit om je dossier bij unbound in te vullen. Kies via deze link een wachtwoord en begin:\n\n{link}\n\nDe link werkt zeven dagen en één keer."
   }
 }

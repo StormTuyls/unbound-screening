@@ -314,7 +314,9 @@
     "coachIntro": "Sign in with your practice account. Where you land depends on who you are.",
     "coachFooter": "Accounts are created by the practice. Ask an administrator to reset your password if you cannot sign in.",
     "toCoach": "Are you a practitioner? Sign in here",
-    "toAthlete": "New here? Start with your intake"
+    "toAthlete": "New here? Start with your intake",
+    "throttled": "Too many attempts. Wait fifteen minutes and try again.",
+    "emailTaken": "There is already an account with this email address. Sign in, or ask for a new password."
   },
   "athleteReport": {
     "title": "Intake report",
@@ -852,5 +854,11 @@
     "rightsNote": "You are always entitled to your full records. Ask the practice for them.",
     "left": "left",
     "right": "right"
+  },
+  "mail": {
+    "resetSubject": "Your new password for unbound",
+    "resetBody": "Someone asked for a new password for this email address. If that was you, choose a new password here:\n\n{link}\n\nThe link works for one hour and once. If you did not ask for this, you need not do anything.",
+    "inviteSubject": "You are invited to unbound",
+    "inviteBody": "Your practice invites you to fill in your file at unbound. Choose a password through this link and start:\n\n{link}\n\nThe link works for seven days and once."
   }
 }

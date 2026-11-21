@@ -1,5 +1,7 @@
-import { createClient } from "@supabase/supabase-js";
 import { transaction } from "@/lib/db/sql";
+import { findAccountByEmail, issueToken, normaliseEmail } from "@/lib/auth/accounts";
+import { sendMail } from "@/lib/auth/mail";
+import { translator } from "@/lib/i18n/translator";
 import { preConsentUntil } from "@/lib/intake/retention";
 import type { Locale } from "@/lib/i18n/locale";
 
@@ -38,145 +40,70 @@ export type InviteOutcome =
   | { ok: true; invite: InviteResult }
   | { ok: false; error: string };
 
-function authAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url) throw new Error("NEXT_PUBLIC_SUPABASE_URL ontbreekt");
-  if (!key) throw new Error("SUPABASE_SERVICE_ROLE_KEY ontbreekt");
-
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
-async function findUserByEmail(email: string): Promise<string | null> {
-  const wanted = email.trim().toLowerCase();
-  const users = await authAdmin().auth.admin.listUsers({ perPage: 200 });
-  return users.data?.users.find((user) => user.email?.toLowerCase() === wanted)?.id ?? null;
-}
-
 /**
  * Nodigt uit, en zorgt dat er een account en een dossier klaarstaan.
  *
- * De volgorde is niet willekeurig. Eerst de mail proberen, want die aanroep
- * maakt de gebruiker én verstuurt in één keer. Lukt het versturen niet, dan
- * maken we de gebruiker alsnog aan zonder mail: een praktijk zonder werkende
- * SMTP hoort een atleet nog steeds te kunnen uitnodigen, met de link in de hand.
+ * Account, profiel en atleetrij in één transactie: mislukt er één, dan staat er
+ * niets, en hoeft er niets met de hand teruggedraaid te worden.
  *
  * Er wordt geen wachtwoord gezet. Hij komt binnen via de link en kiest er zelf
- * een op zijn profiel, en zo staat er nergens een wachtwoord dat iemand anders
- * ook kent.
+ * een, en zo staat er nergens een wachtwoord dat iemand anders ook kent. De link
+ * werkt zeven dagen en één keer; het token zit in het fragment, zodat het niet
+ * in een serverlog belandt (zie components/auth/ResetPassword.tsx).
  */
-/**
- * De link die we doorgeven, gebouwd op onze eigen callback.
- *
- * Niet het `action_link` dat generateLink teruggeeft, en dat is geen detail: dat
- * adres wijst naar /auth/v1/verify van Supabase, en dat endpoint zet de tokens
- * in de fragment van de URL (`#access_token=...`). Een fragment wordt door een
- * browser nooit naar de server gestuurd, dus /auth/callback is een serverroute
- * die per definitie niets ziet. Getest: de callback werd geraakt zonder `code`
- * en zonder `token_hash`, en stuurde netjes door naar het inlogscherm.
- *
- * `hashed_token` is wel serverzijdig in te wisselen, met verifyOtp, en dat is
- * precies de variant die /auth/callback al ondersteunt.
- */
-function callbackLink(origin: string, hashedToken: string | undefined): string | null {
-  if (!hashedToken) return null;
-  const url = new URL(`${origin}/auth/callback`);
-  url.searchParams.set("token_hash", hashedToken);
-  url.searchParams.set("type", "magiclink");
-  url.searchParams.set("next", "/home");
-  return url.toString();
-}
-
 export async function inviteAthlete(input: {
   email: string;
   fullName: string | null;
   locale: Locale;
-  /** De behandelaar die uitnodigt. Meteen de toewijzing, want die weet hij nu. */
   practitionerId: string;
-  /** De basis waar de link naar terugwijst, bijvoorbeeld https://intake.praktijk.be. */
   origin: string;
 }): Promise<InviteOutcome> {
-  const admin = authAdmin();
-  const email = input.email.trim();
+  const email = normaliseEmail(input.email);
 
-  if (await findUserByEmail(email)) {
+  if (await findAccountByEmail(email)) {
     // Geen uitnodiging bovenop een bestaand account. Dat zou een tweede dossier
     // opleveren voor iemand die er al een heeft, en dat is precies het soort
     // dubbele dat later niemand meer uit elkaar haalt.
     return { ok: false, error: "That email address already has an account here." };
   }
 
-  // Waar hij uitkomt na het klikken: de consentpoort staat voor /home, dus dat
-  // is het enige adres dat hier nodig is.
-  const redirectTo = `${input.origin}/auth/callback?next=/home`;
-
-  const invited = await admin.auth.admin.inviteUserByEmail(email, { redirectTo });
-
-  let userId = invited.data?.user?.id ?? null;
-  let mailed = invited.error === null;
-
-  if (!userId) {
-    // De mail ging niet weg. Meestal geen SMTP ingesteld, en dat mag geen reden
-    // zijn om de uitnodiging niet te kunnen doen: het account komt er, de link
-    // hieronder is dan de weg naar binnen.
-    const created = await admin.auth.admin.createUser({ email, email_confirm: true });
-    if (created.error || !created.data.user) {
-      return {
-        ok: false,
-        error: created.error?.message ?? "could not create the account",
-      };
-    }
-    userId = created.data.user.id;
-    mailed = false;
-  }
-
-  // De kopieerbare link, los van de mail. Een magic link en geen invite-link:
-  // die tweede is al opgebruikt door de mail hierboven, en twee links voor
-  // hetzelfde account is één link te veel om uit te leggen.
-  const generated = await admin.auth.admin.generateLink({
-    type: "magiclink",
-    email,
-    options: { redirectTo },
+  const { userId, athleteId } = await transaction(async (run) => {
+    const [account] = await run<{ id: string }>(
+      "insert into public.accounts (email) values ($1) returning id",
+      [email],
+    );
+    await run(
+      `insert into public.profiles (id, role, full_name, locale)
+       values ($1, 'athlete', $2, $3)`,
+      [account.id, input.fullName, input.locale],
+    );
+    // Dezelfde voorlopige termijn als bij zelfaanmelding. Geeft hij nooit
+    // consent, dan ruimt de retentiejob dit op: een uitnodiging die niemand
+    // aanneemt hoort niet als dossier te blijven staan.
+    const [athlete] = await run<{ id: string }>(
+      `insert into public.athletes
+         (profile_id, full_name, email, locale, practitioner_id, retention_mode, retention_until)
+       values ($1, $2, $3, $4, $5, 'until_date', $6)
+       returning id`,
+      [account.id, input.fullName, email, input.locale, input.practitionerId, preConsentUntil()],
+    );
+    return { userId: account.id, athleteId: athlete.id };
   });
 
-  // Profiel en atleetrij samen. Mislukt de tweede, dan rolt de eerste mee
-  // terug, en hoeft alleen het account nog weg.
-  let athleteId: string;
-  try {
-    athleteId = await transaction(async (run) => {
-      await run(
-        `insert into public.profiles (id, role, full_name, locale)
-         values ($1, 'athlete', $2, $3)
-         on conflict (id) do update
-           set role = 'athlete', full_name = excluded.full_name, locale = excluded.locale`,
-        [userId, input.fullName, input.locale],
-      );
-      // Dezelfde voorlopige termijn als bij zelfaanmelding. Geeft hij nooit
-      // consent, dan ruimt de retentiejob dit op: een uitnodiging die niemand
-      // aanneemt hoort niet als dossier te blijven staan.
-      const [athlete] = await run<{ id: string }>(
-        `insert into public.athletes
-           (profile_id, full_name, email, locale, practitioner_id, retention_mode, retention_until)
-         values ($1, $2, $3, $4, $5, 'until_date', $6)
-         returning id`,
-        [userId, input.fullName, email, input.locale, input.practitionerId, preConsentUntil()],
-      );
-      return athlete.id;
-    });
-  } catch (error) {
-    await admin.auth.admin.deleteUser(userId);
-    return { ok: false, error: `uitnodigen mislukt: ${(error as Error).message}` };
-  }
+  const token = await issueToken(userId, "invite", 24 * 7);
+  const link = `${input.origin}/auth/reset#token=${encodeURIComponent(token)}`;
 
-  return {
-    ok: true,
-    invite: {
-      athleteId,
-      userId,
-      link: callbackLink(input.origin, generated.data?.properties?.hashed_token),
-      mailed,
-    },
-  };
+  // De mail is de normale weg, de link op het scherm de uitweg. Lukt de mail
+  // niet, dan is de uitnodiging niet mislukt.
+  const t = translator(input.locale, "mail");
+  const mailed = await sendMail({
+    to: email,
+    subject: t("inviteSubject"),
+    text: t("inviteBody", { link }),
+  }).catch((error) => {
+    console.error("[auth] uitnodigingsmail mislukt", error);
+    return false;
+  });
+
+  return { ok: true, invite: { athleteId, userId, link, mailed } };
 }

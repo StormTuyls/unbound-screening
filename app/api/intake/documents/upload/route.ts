@@ -18,10 +18,9 @@ const ALLOWED = new Set<string>(ACCEPTED_MIME_TYPES);
  * zoals voorheen na de upload naar Supabase. Bewaren vóór analyseren blijft de
  * volgorde: het ruwe bestand staat er, ook als de verwerking daarna klapt.
  *
- * Deze route valt buiten proxy.ts. Een verzoek door de proxy wordt maar tot
- * 10 MB gebufferd en daarboven stil afgekapt (experimental.proxyClientMaxBodySize),
- * en dan komt hier een halve PDF binnen die er heel uitziet. De sessie wordt
- * hieronder toch gecontroleerd; de proxy vernieuwde alleen het cookie.
+ * Er staat geen proxy.ts voor deze app. Kwam die ooit terug, dan moet deze route
+ * erbuiten: een verzoek door de proxy wordt maar tot 10 MB gebufferd en
+ * daarboven stil afgekapt (experimental.proxyClientMaxBodySize).
  */
 export async function POST(request: Request) {
   try {
@@ -48,7 +47,7 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    return NextResponse.json({ path }, { headers: { "Cache-Control": "private, no-store" } });
+    return NextResponse.json({ path });
   } catch (error) {
     return handleError(error);
   }
