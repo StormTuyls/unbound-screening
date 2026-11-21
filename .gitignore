@@ -30,3 +30,6 @@ lib/screening/afkapwaarden.ts
 
 # Aangeleverde documenten (lib/documents/store.ts). Medische gegevens, nooit in git.
 /data/
+
+# Het voorbeeld met alle variabelen, zonder waarden, mag wel mee.
+!.env.example
