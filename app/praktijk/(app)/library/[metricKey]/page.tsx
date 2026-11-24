@@ -4,7 +4,9 @@ import { unitLabel } from "@/lib/screening/units";
 import { notFound, redirect } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { checkCoach } from "@/lib/review/access";
-import { getRule, getRuleHistory } from "@/lib/db/referenceRules";
+import { getRule, getRuleHistory, getTestByMetric } from "@/lib/db/referenceRules";
+import { AboutEditor } from "@/components/coach/AboutEditor";
+import { RetireTest } from "@/components/coach/RetireTest";
 import { RuleEditor } from "@/components/coach/RuleEditor";
 import { ClassificationToggle } from "@/components/coach/ClassificationToggle";
 
@@ -39,14 +41,17 @@ export default async function RulePage({
   }
   if (access.kind !== "coach") notFound();
 
+  // Ook een test zonder regel heeft deze pagina: daar komt zijn eerste regel en
+  // zijn uitleg. Zonder test bestaat de metriek niet, en dat is een 404.
+  const test = await getTestByMetric(key);
+  if (!test) notFound();
   const rule = await getRule(key);
-  if (!rule) notFound();
 
-  const history = await getRuleHistory(rule.ruleKey);
+  const history = rule ? await getRuleHistory(rule.ruleKey) : [];
   const t = await getTranslations("library");
-  const unit = unitLabel(rule.unit, (await getTranslations("screening"))("handLengths"));
+  const unit = unitLabel(test.unit, (await getTranslations("screening"))("handLengths"));
   const locale = await getLocale();
-  const name = locale === "nl" ? rule.testLabelNl : rule.testLabelEn;
+  const name = locale === "nl" ? test.labelNl : test.labelEn;
 
   return (
     <>
@@ -57,22 +62,39 @@ export default async function RulePage({
       <header className="mt-1 mb-6">
         <h1 className="text-2xl font-semibold tracking-tight">{name}</h1>
         <p className="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink-muted">
-          <span>{t("version", { n: rule.version })}</span>
-          <span
-            className={`rounded px-1.5 py-0.5 text-[10px] ${
-              rule.classificationEnabled ? "bg-ok/10 text-ok" : "bg-canvas text-ink-muted"
-            }`}
-          >
-            {rule.classificationEnabled ? t("classifies") : t("notClassifying")}
-          </span>
-          {!rule.protocolConfirmed && (
+          {rule ? (
+            <>
+              <span>{t("version", { n: rule.version })}</span>
+              <span
+                className={`rounded px-1.5 py-0.5 text-[10px] ${
+                  rule.classificationEnabled ? "bg-ok/10 text-ok" : "bg-canvas text-ink-muted"
+                }`}
+              >
+                {rule.classificationEnabled ? t("classifies") : t("notClassifying")}
+              </span>
+            </>
+          ) : (
+            <span className="rounded bg-canvas px-1.5 py-0.5 text-[10px] text-ink-muted">
+              {t("noRuleYet")}
+            </span>
+          )}
+          {!test.protocolConfirmed && (
             <span className="text-xs text-ink-faint">{t("protocolNotFixed")}</span>
           )}
         </p>
       </header>
 
+      {/* De uitleg bij het ⓘ naast de testnaam. Hier en niet in een bestand,
+          zodat wie de test afneemt hem ook kan bijschaven. */}
+      <section className="mb-6">
+        <h2 className="text-sm font-medium">{t("aboutTitle")}</h2>
+        <p className="mt-0.5 mb-2 max-w-prose text-xs text-ink-faint">{t("aboutIntro")}</p>
+        <AboutEditor testKey={test.testKey} initial={{ nl: test.aboutNl, en: test.aboutEn }} />
+      </section>
+
       {/* Wat er nu geldt, als platte tekst. Het formulier eronder maakt de
           volgende versie; dit is wat een meting vandaag te horen krijgt. */}
+      {rule && (
       <section className="mb-6">
         <h2 className="mb-1 text-sm font-medium">{t("current")}</h2>
         <BandScale
@@ -107,24 +129,38 @@ export default async function RulePage({
           />
         </div>
       </section>
+      )}
 
       <section className="mb-6 border-t border-hairline pt-4">
-        <h2 className="mb-2 text-sm font-medium">{t("saveVersion")}</h2>
+        <h2 className="mb-2 text-sm font-medium">{rule ? t("saveVersion") : t("firstRule")}</h2>
         <RuleEditor
-          metricKey={rule.metricKey}
+          metricKey={test.metricKey}
           unit={unit}
-          initial={{
-            bands: rule.bands,
-            coverage: rule.coverage,
-            classificationEnabled: rule.classificationEnabled,
-            evidence: rule.evidence,
-            sourceCitation: rule.sourceCitation,
-            sourceNote: rule.sourceNote,
-          }}
+          initial={
+            rule
+              ? {
+                  bands: rule.bands,
+                  coverage: rule.coverage,
+                  classificationEnabled: rule.classificationEnabled,
+                  evidence: rule.evidence,
+                  sourceCitation: rule.sourceCitation,
+                  sourceNote: rule.sourceNote,
+                }
+              : {
+                  // Een eerste regel deelt nog niet in: dat zet je pas aan als
+                  // de banden kloppen.
+                  bands: [],
+                  coverage: "total",
+                  classificationEnabled: false,
+                  evidence: "internal",
+                  sourceCitation: null,
+                  sourceNote: null,
+                }
+          }
         />
       </section>
 
-      {history.length > 1 && (
+      {rule && history.length > 1 && (
         <section className="border-t border-hairline pt-4">
           <h2 className="mb-2 text-sm font-medium">{t("history")}</h2>
           <ul className="divide-y divide-hairline border-t border-hairline text-xs">
@@ -144,6 +180,12 @@ export default async function RulePage({
           </ul>
         </section>
       )}
+
+      <section className="mt-8 border-t border-hairline pt-4">
+        <h2 className="text-sm font-medium">{t("retireTest")}</h2>
+        <p className="mt-0.5 mb-2 max-w-prose text-xs text-ink-faint">{t("retireIntro")}</p>
+        <RetireTest testKey={test.testKey} mode="retire" />
+      </section>
     </>
   );
 }

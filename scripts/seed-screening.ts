@@ -54,8 +54,10 @@ async function main() {
            domain = excluded.domain,
            body_region = excluded.body_region,
            source_note = excluded.source_note,
-           about_nl = excluded.about_nl,
-           about_en = excluded.about_en`,
+           -- De uitleg wordt in de app bijgehouden. Het bestand vult alleen
+           -- wat nog leeg is, anders wist elke seed een bewerking.
+           about_nl = coalesce(public.test_definitions.about_nl, excluded.about_nl),
+           about_en = coalesce(public.test_definitions.about_en, excluded.about_en)`,
         // Weggelaten domain is klinisch: de 26 bestaande tests zijn dat allemaal
         // en hoeven er niets over te zeggen. De kolom zelf heeft geen default,
         // zodat dit de enige plek is waar die aanname staat.

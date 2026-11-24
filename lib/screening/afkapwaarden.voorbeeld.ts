@@ -68,7 +68,11 @@ export const PARTS: Library[] = [
   }),
 ];
 
-/** Uitleg per test, naast de testnaam in de app. Verzonnen, zoals de tests. */
+/**
+ * Uitleg per test, naast de testnaam in de app. Verzonnen, zoals de tests.
+ * Alleen een beginwaarde: de seed vult hiermee wat leeg is, daarna wordt de
+ * uitleg bij de referentiewaarden in de app bijgehouden.
+ */
 export const ABOUT: AboutTexts = {
   "voorbeeld.hoek_per_zijde": {
     nl: "Een verzonnen hoekmeting per zijde, om het invoerscherm te kunnen bouwen.",

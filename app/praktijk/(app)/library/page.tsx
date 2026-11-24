@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { getLocale, getTranslations } from "next-intl/server";
 import { checkCoach } from "@/lib/review/access";
-import { listRules } from "@/lib/db/referenceRules";
+import { listRules, listTestsWithoutRule } from "@/lib/db/referenceRules";
+import { listRetiredTests } from "@/lib/db/testLibrary";
+import { RetireTest } from "@/components/coach/RetireTest";
 import { BandScale } from "@/components/coach/BandScale";
 import { TestInfo } from "@/components/coach/TestInfo";
 import { unitLabel } from "@/lib/screening/units";
@@ -29,7 +31,11 @@ export default async function LibraryPage() {
   if (access.kind === "anonymous") redirect("/praktijk/login?next=/praktijk/library");
   if (access.kind !== "coach") notFound();
 
-  const rules = await listRules();
+  const [rules, withoutRule, retired] = await Promise.all([
+    listRules(),
+    listTestsWithoutRule(),
+    listRetiredTests(),
+  ]);
   const t = await getTranslations("library");
   const ts = await getTranslations("screening");
   const titles = await getTranslations("titles");
@@ -51,12 +57,20 @@ export default async function LibraryPage() {
 
   return (
     <>
-      <header className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
-        <p className="mt-1 text-sm text-ink-muted">
-          {grading}/{rules.length} {t("classifies")}
-        </p>
-        <p className="mt-2 max-w-prose text-xs text-ink-faint">{t("intro")}</p>
+      <header className="mb-8 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("title")}</h1>
+          <p className="mt-1 text-sm text-ink-muted">
+            {grading}/{rules.length} {t("classifies")}
+          </p>
+          <p className="mt-2 max-w-prose text-xs text-ink-faint">{t("intro")}</p>
+        </div>
+        <Link
+          href="/praktijk/library/new"
+          className="inline-flex min-h-11 shrink-0 items-center rounded bg-brand-700 px-4 text-sm text-white transition-colors hover:bg-brand-800 active:scale-[0.98]"
+        >
+          {t("addTest")}
+        </Link>
       </header>
 
       {rules.length === 0 ? (
@@ -127,6 +141,65 @@ export default async function LibraryPage() {
             </ul>
           </section>
         ))
+      )}
+
+      {/* Zonder deze lijst was een test zonder regel nergens te openen, en kon
+          niemand hem een uitleg of een eerste regel geven. */}
+      {withoutRule.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-1 text-sm font-medium">{t("withoutRule")}</h2>
+          <p className="mb-2 max-w-prose text-xs text-ink-faint">{t("withoutRuleIntro")}</p>
+          <ul className="divide-y divide-hairline border-t border-hairline">
+            {withoutRule.map((test) => {
+              const testName = locale === "nl" ? test.labelNl : test.labelEn;
+              return (
+                <li key={test.testKey} className="flex items-start gap-1">
+                  <span className="pt-1.5">
+                    <TestInfo
+                      name={testName}
+                      about={locale === "nl" ? test.aboutNl : test.aboutEn}
+                      unit={test.unit}
+                      direction={test.direction}
+                      laterality={test.laterality}
+                      bands={null}
+                      protocolConfirmed={test.protocolConfirmed}
+                    />
+                  </span>
+                  <Link
+                    href={`/praktijk/library/${encodeURIComponent(test.metricKey)}`}
+                    className="flex min-h-11 min-w-0 flex-1 items-center justify-between gap-4 py-2 text-sm transition-colors hover:bg-canvas"
+                  >
+                    <span>{testName}</span>
+                    <span className="text-xs text-ink-muted">
+                      {ts(`blocks.${test.block}` as "blocks.core")}
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
+      {retired.length > 0 && (
+        <section className="mb-8">
+          <h2 className="mb-1 text-sm font-medium">{t("retiredTitle")}</h2>
+          <p className="mb-2 max-w-prose text-xs text-ink-faint">{t("retiredIntro")}</p>
+          <ul className="divide-y divide-hairline border-t border-hairline">
+            {retired.map((test) => (
+              <li key={test.testKey} className="flex min-h-11 flex-wrap items-center justify-between gap-3 py-2 text-sm">
+                <span className="text-ink-muted">
+                  {locale === "nl" ? test.labelNl : test.labelEn}
+                  <span className="ml-2 text-xs">
+                    {ts(`blocks.${test.block}` as "blocks.core")} ·{" "}
+                    {t("retiredOn", { date: test.retiredAt.slice(0, 10) })}
+                  </span>
+                </span>
+                <RetireTest testKey={test.testKey} mode="restore" />
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
     </>
   );
