@@ -702,6 +702,7 @@
   "coach": {
     "signedInAs": "{practice} · signed in as {name}",
     "team": "Team",
+    "account": "Account",
     "signOut": "Sign out",
     "searchPlaceholder": "Search by name",
     "searchLabel": "Search athletes by name",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useTranslations } from "next-intl";
 import { SectionLabel } from "@/components/intake/SectionLabel";
 import { CheckIcon } from "@/components/intake/icons";
@@ -22,6 +22,10 @@ import { CheckIcon } from "@/components/intake/icons";
  */
 export function ChangePassword({ email }: { email: string | null }) {
   const t = useTranslations("password");
+  const tAuth = useTranslations("auth");
+  const [show, setShow] = useState(false);
+  // htmlFor: zonder wijst het label naar de toonknop, het eerste labelbare kind.
+  const passwordId = useId();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -85,16 +89,26 @@ export function ChangePassword({ email }: { email: string | null }) {
       >
         <p className="text-xs text-ink-faint">{t("changeIntro")}</p>
 
-        <label className="mt-3 block">
-          <span className={label}>{t("current")}</span>
+        <label className="mt-3 block" htmlFor={passwordId}>
+          <span className="flex items-center justify-between">
+            <span className={label}>{t("current")}</span>
+            <button
+              type="button"
+              onClick={() => setShow((value) => !value)}
+              className="-my-2.5 inline-flex min-h-11 items-center text-xs font-medium text-brand-700"
+            >
+              {show ? tAuth("hide") : tAuth("show")}
+            </button>
+          </span>
           <input
+            id={passwordId}
             value={current}
             onChange={(event) => {
               setCurrent(event.target.value);
               setDone(false);
               setError(null);
             }}
-            type="password"
+            type={show ? "text" : "password"}
             autoComplete="current-password"
             className={field}
           />
@@ -109,7 +123,7 @@ export function ChangePassword({ email }: { email: string | null }) {
               setDone(false);
               setError(null);
             }}
-            type="password"
+            type={show ? "text" : "password"}
             minLength={8}
             autoComplete="new-password"
             className={field}
@@ -125,7 +139,7 @@ export function ChangePassword({ email }: { email: string | null }) {
               setDone(false);
               setError(null);
             }}
-            type="password"
+            type={show ? "text" : "password"}
             minLength={8}
             autoComplete="new-password"
             className={field}

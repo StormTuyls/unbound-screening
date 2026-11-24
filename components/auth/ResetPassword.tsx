@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useId, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -29,6 +29,10 @@ const subscribe = (onChange: () => void) => {
 
 export function ResetPassword() {
   const t = useTranslations("password");
+  const tAuth = useTranslations("auth");
+  const [show, setShow] = useState(false);
+  // htmlFor: zonder wijst het label naar de toonknop, het eerste labelbare kind.
+  const passwordId = useId();
   const router = useRouter();
   // null op de server en tijdens het hydrateren: dan toont het scherm het
   // formulier en niet meteen "deze link werkt niet meer".
@@ -98,12 +102,22 @@ export function ResetPassword() {
             }}
             className="mt-6"
           >
-            <label className="block">
-              <span className="text-label uppercase text-ink-faint">{t("new")}</span>
+            <label className="block" htmlFor={passwordId}>
+              <span className="flex items-center justify-between">
+                <span className="text-label uppercase text-ink-faint">{t("new")}</span>
+                <button
+                  type="button"
+                  onClick={() => setShow((value) => !value)}
+                  className="-my-2.5 inline-flex min-h-11 items-center text-xs font-medium text-brand-700"
+                >
+                  {show ? tAuth("hide") : tAuth("show")}
+                </button>
+              </span>
               <input
+                id={passwordId}
                 value={next}
                 onChange={(event) => setNext(event.target.value)}
-                type="password"
+                type={show ? "text" : "password"}
                 minLength={8}
                 autoComplete="new-password"
                 autoFocus
@@ -116,7 +130,7 @@ export function ResetPassword() {
               <input
                 value={confirm}
                 onChange={(event) => setConfirm(event.target.value)}
-                type="password"
+                type={show ? "text" : "password"}
                 minLength={8}
                 autoComplete="new-password"
                 className={field}

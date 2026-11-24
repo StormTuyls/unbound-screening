@@ -1,6 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { CoachNav } from "@/components/coach/CoachNav";
 import { PRACTICE_NAME } from "@/lib/report/branding";
+import { checkCoach } from "@/lib/review/access";
 
 /**
  * De schil om de coachschermen.
@@ -27,6 +28,9 @@ export default async function CoachLayout({
   const t = await getTranslations("titles");
   const tl = await getTranslations("library");
   const tc = await getTranslations("coach");
+  // Team alleen voor een admin: de pagina zelf geeft anderen een 404.
+  const access = await checkCoach();
+  const isAdmin = access.kind === "coach" && access.coach.role === "admin";
 
   return (
     <>
@@ -35,6 +39,8 @@ export default async function CoachLayout({
         items={[
           { href: "/praktijk", label: t("athletes") },
           { href: "/praktijk/library", label: tl("title") },
+          ...(isAdmin ? [{ href: "/praktijk/team", label: tc("team") }] : []),
+          { href: "/praktijk/account", label: tc("account") },
         ]}
         signOut={tc("signOut")}
       />
