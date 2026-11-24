@@ -148,14 +148,57 @@ h3 {
   letter-spacing: -0.01em;
 }
 
-/* De voet van een onderdeel. Op het scherm scheidt hij de onderdelen, op
-   papier sluit hij er een af. */
-.report-foot {
-  margin-top: 1.5rem;
-  padding-top: 0.5rem;
-  border-top: 1px solid var(--color-hairline);
-  font-size: 10px;
-  color: var(--color-ink-muted);
+/**
+ * Het rapport in de huisstijl van de performancerapporten van de praktijk.
+ *
+ * Alleen hier, niet in de app. De warme reeks ging eruit omdat de APP er oud
+ * van ging lezen; het rapport is een document dat naast de rapporten van de
+ * kine ligt, en die vroeg om deze stijl. Wit papier, donkergroen en goud.
+ *
+ * Door de tokens hier te herdefiniëren volgen de utilities (text-danger,
+ * border-hairline, ...) en de strips vanzelf, zonder aparte klassen.
+ *
+ * Eigen sneden: Archivo smal voor koppen, Atkinson Hyperlegible voor tekst en
+ * cijfers. Atkinson is getekend om 1, l en I en 0 en O uit elkaar te houden,
+ * en dat is in een rapport vol meetwaarden de reden om hem te kiezen.
+ */
+.report {
+  --font-sans: var(--ff-report-sans), var(--ff-sans), ui-sans-serif, sans-serif;
+  --font-display: var(--ff-report-display), var(--font-sans);
+  --font-mono: var(--ff-report-mono), var(--ff-mono), ui-monospace, monospace;
+
+  --color-ink: #1f2421;
+  --color-ink-muted: #5d615a;
+  --color-ink-faint: #5d615a;
+  --color-hairline: #ddd7c6;
+  --color-rule: #e9e5da;
+  --color-canvas: #f3f0e7;
+  /* Goud: de lijn (600) en goud als tekst (700, 4,7:1 op wit). */
+  --color-brand-200: #d4b46e;
+  --color-brand-600: #b08d45;
+  --color-brand-700: #8f6d2c;
+  --color-ok: #3a7547;
+  --color-warn: #95620f;
+  --color-danger: #a6342b;
+  --color-danger-band: #e8b9ad;
+  --color-warn-band: #ead69f;
+  /* Links goud, rechts groen, zoals in de rapporten van de kine. */
+  --color-series-1: #b08d45;
+  --color-series-2: #3e6b4e;
+  --report-forest: #22392d;
+
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background: #fff;
+}
+
+.report h1,
+.report h2,
+.report h3,
+.report .font-display {
+  font-family: var(--font-display);
+  font-variation-settings: "wdth" 72;
+  letter-spacing: 0.01em;
 }
 
 /* Alleen op papier; op het scherm staat dit al in de kop van de kaft. */
@@ -199,6 +242,14 @@ h3 {
   @page {
     size: A4;
     margin: 14mm;
+
+    /* Een echt bladnummer. Chrome kent de margevakken met counter(pages)
+       sinds versie 131; een oudere browser laat ze gewoon weg. */
+    @bottom-right {
+      content: counter(page) " / " counter(pages);
+      font-size: 9px;
+      color: #5d615a;
+    }
   }
 
   /**

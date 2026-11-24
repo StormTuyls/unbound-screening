@@ -42,6 +42,8 @@ export interface StripMarker {
   /** "L", "R", of leeg bij een tweebenige test. */
   label: string;
   previous?: number | null;
+  /** Kleur van de zijde; zonder kleur inkt, zoals op het scherm. */
+  color?: string;
 }
 
 /**
@@ -149,6 +151,8 @@ export function BandStrip({
         const cx = x(m.value);
         const hasPrev = typeof m.previous === "number" && m.previous !== m.value;
         const px = hasPrev ? x(m.previous as number) : cx;
+        const ink = m.color ?? "var(--color-ink)";
+        const trail = m.color ?? "var(--color-ink-muted)";
         return (
           <g key={`${m.label}-${i}`}>
             {m.label && (
@@ -169,7 +173,7 @@ export function BandStrip({
                   x2={cx}
                   y1={y}
                   y2={y}
-                  stroke="var(--color-ink-muted)"
+                  stroke={trail}
                   strokeWidth={0.8}
                 />
                 <circle
@@ -177,7 +181,7 @@ export function BandStrip({
                   cy={y}
                   r={2.4}
                   fill="var(--color-surface)"
-                  stroke="var(--color-ink-muted)"
+                  stroke={trail}
                   strokeWidth={1}
                 />
               </>
@@ -186,7 +190,7 @@ export function BandStrip({
                 staat. Een staafje van een haar breed ging op in de
                 bandgrenzen; een dichte stip is op het eerste gezicht de
                 meting en niets anders. */}
-            <circle cx={cx} cy={y} r={3} fill="var(--color-ink)" />
+            <circle cx={cx} cy={y} r={3} fill={ink} />
           </g>
         );
       })}
