@@ -3,15 +3,22 @@ import { z } from "zod";
 import { badRequest, handleError } from "@/lib/http";
 import { requireCoach } from "@/lib/review/access";
 import { BAND } from "@/lib/screening/bands";
-import { addVersion, checkVersion, getRule, setClassification } from "@/lib/db/referenceRules";
+import {
+  addVersion,
+  checkVersion,
+  getRule,
+  setClassification,
+  setTestAbout,
+} from "@/lib/db/referenceRules";
 
 export const maxDuration = 60;
 
 /**
  * Referentieregels beheren. FR-02.
  *
- * Twee handelingen onder een route, omdat ze over hetzelfde ding gaan en de
- * client er een formulier voor heeft.
+ * Drie handelingen onder een route, omdat ze over hetzelfde ding gaan en de
+ * client er een formulier voor heeft: classificatie aan of uit, een nieuwe
+ * versie van de banden, en de uitleg bij de test.
  *
  * Wie dit mag: elke behandelaar, niet alleen een beheerder. Het teamscherm is
  * wel beheerder-only, maar dat gaat over wie toegang heeft tot dossiers; dit
@@ -37,7 +44,21 @@ const version = z.object({
   sourceNote: z.string().max(2000).nullable(),
 });
 
-const bodySchema = z.discriminatedUnion("action", [toggle, version]);
+// Leeg en alleen spaties worden null: dan toont de app weer alleen de feiten.
+const aboutText = z
+  .string()
+  .max(2000)
+  .nullable()
+  .transform((text) => (text?.trim() ? text.trim() : null));
+
+const about = z.object({
+  action: z.literal("about"),
+  testKey: z.string().min(1).max(200),
+  aboutNl: aboutText,
+  aboutEn: aboutText,
+});
+
+const bodySchema = z.discriminatedUnion("action", [toggle, version, about]);
 
 export async function POST(request: Request) {
   try {
@@ -47,6 +68,11 @@ export async function POST(request: Request) {
     const parsed = bodySchema.safeParse(await request.json().catch(() => null));
     if (!parsed.success) return badRequest("Expected a rule change.");
     const body = parsed.data;
+
+    if (body.action === "about") {
+      const saved = await setTestAbout(body.testKey, { nl: body.aboutNl, en: body.aboutEn }, actor);
+      return saved ? NextResponse.json({ ok: true }) : badRequest("Unknown test.");
+    }
 
     if (body.action === "classification") {
       await setClassification(body.ruleId, body.enabled, actor);

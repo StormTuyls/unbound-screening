@@ -4,6 +4,9 @@ import { type FormEvent, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { postJson } from "@/lib/postJson";
+import { matchBand, type Band } from "@/lib/screening/bands";
+import { zoneFill } from "@/components/report/BandStrip";
+import { TestInfo } from "@/components/coach/TestInfo";
 
 /**
  * Invoerscherm voor een screening.
@@ -17,6 +20,11 @@ import { postJson } from "@/lib/postJson";
  * 2. Niets is verplicht. Een behandelaar die alleen de enkel bekijkt hoort geen
  *    volledige screening te hoeven invullen; FR-03 noemt dat micro-entry. De
  *    server weigert alleen een sessie waarin helemaal niets staat.
+ *
+ * De band staat naast het veld terwijl je typt. Pas na het bewaren weten waar
+ * een waarde op uitkomt is te laat: dan staat de tester al met zijn tablet in
+ * de gang en is de atleet weg. Dezelfde matchBand als de server, dus wat hier
+ * staat is wat in het rapport komt, op de meetdatum na (zie de pagina).
  */
 
 export interface EntryTest {
@@ -27,10 +35,14 @@ export interface EntryTest {
   unit: string;
   perSide: boolean;
   decimals: number;
-  /** Of deze test op dit moment een band kan opleveren. */
-  classifies: boolean;
+  /** De banden als deze test nu kan indelen, anders null. */
+  bands: Band[] | null;
   protocolConfirmed: boolean;
   note: string | null;
+  /** Uitleg bij de test, voor het info-knopje naast de naam. */
+  about: string | null;
+  direction: string;
+  laterality: string;
 }
 
 /** Alleen de volgorde; de namen komen uit de berichtencatalogus. */
@@ -45,10 +57,14 @@ const UNIT_LABELS: Record<string, string> = {
   n: "N",
   xbw: "×BW",
   score: "0–3",
-  hand_lengths: "hand lengths",
 };
 
 type Values = Record<string, string>;
+type Side = "left" | "right" | "bilateral";
+
+const sidesOf = (test: EntryTest): Side[] =>
+  test.perSide ? ["left", "right"] : ["bilateral"];
+const keyOf = (test: EntryTest, side: Side) => `${test.metricKey}|${side}`;
 
 /** Leeg blijft leeg. Alleen een echt getal wordt een getal. */
 function toValue(raw: string | undefined): number | null {
@@ -94,7 +110,14 @@ export function ScreeningEntry({
     );
   }, [tests]);
 
-  const filled = Object.values(values).filter((v) => v.trim() !== "").length;
+  const isFilled = (key: string) => (values[key] ?? "").trim() !== "";
+  /** Ingevulde en beschikbare velden, per zijde geteld zoals ze op het scherm staan. */
+  const tally = (items: EntryTest[]) => {
+    const keys = items.flatMap((test) => sidesOf(test).map((side) => keyOf(test, side)));
+    return { filled: keys.filter(isFilled).length, total: keys.length };
+  };
+  const all = tally(tests);
+  const filled = all.filled;
 
   async function save(event: FormEvent) {
     event.preventDefault();
@@ -102,11 +125,11 @@ export function ScreeningEntry({
     setError(null);
 
     const entries = tests.flatMap((test) =>
-      (test.perSide ? (["left", "right"] as const) : (["bilateral"] as const))
+      sidesOf(test)
         .map((side) => ({
           metricKey: test.metricKey,
           side,
-          value: toValue(values[`${test.metricKey}|${side}`]),
+          value: toValue(values[keyOf(test, side)]),
         }))
         // Alleen wat de tester aanraakte gaat mee. Een sessie waarin elke test
         // van de bibliotheek als "niet gemeten" staat is onleesbaar: 26 lege
@@ -132,7 +155,7 @@ export function ScreeningEntry({
     // saving blijft hier bewust staan: de navigatie volgt, en een knop die
     // tussendoor weer aanklikbaar wordt levert een tweede sessie op.
     const { sessionId } = result.data as { sessionId: string };
-    router.push(`/coach/screening/${sessionId}`);
+    router.push(`/praktijk/screening/${sessionId}`);
   }
 
   return (
@@ -148,7 +171,7 @@ export function ScreeningEntry({
               type="date"
               value={occurredOn}
               onChange={(e) => setOccurredOn(e.target.value)}
-              className="w-full rounded border border-hairline bg-surface px-2 py-1.5 text-base"
+              className="min-h-[52px] w-full rounded border border-hairline bg-surface px-3 text-base"
             />
           </label>
           <label className="text-sm">
@@ -161,7 +184,7 @@ export function ScreeningEntry({
               step="0.1"
               value={bodyMass}
               onChange={(e) => setBodyMass(e.target.value)}
-              className="w-full rounded border border-hairline bg-surface px-2 py-1.5 text-base"
+              className="min-h-[52px] w-full rounded border border-hairline bg-surface px-3 text-base"
             />
           </label>
           <label className="text-sm sm:col-span-1">
@@ -171,97 +194,166 @@ export function ScreeningEntry({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder={t("contextHint")}
-              className="w-full rounded border border-hairline bg-surface px-2 py-1.5 text-base"
+              className="min-h-[52px] w-full rounded border border-hairline bg-surface px-3 text-base"
             />
           </label>
         </section>
 
-        {blocks.map(([block, items]) => (
-          <section key={block}>
-            <h2 className="mb-2 text-sm font-medium">{t(`blocks.${block}` as "blocks.core")}</h2>
-            <ul className="divide-y divide-hairline border-t border-hairline">
-              {items.map((test) => (
-                <li
-                  key={test.metricKey}
-                  className="flex flex-col gap-2 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4"
-                >
-                  <div className="min-w-0">
-                    <span className="block text-sm">{test.label}</span>
-                    <span className="text-xs text-ink-faint">
-                      {UNIT_LABELS[test.unit] ?? test.unit}
-                      {/* Eerlijk zijn over wat dit getal straks oplevert. Een
-                          tester die weet dat een test niet scoort, weet ook
-                          waarom er later geen band staat. */}
-                      {!test.classifies && ` · ${t("noBandYet")}`}
-                      {!test.protocolConfirmed && ` · ${t("protocolNotFixed")}`}
-                    </span>
-                  </div>
+        {/* Waar je bent en hoeveel er in elk blok staat, met één tik erheen.
+            Zevenenvijftig velden onder elkaar zonder houvast was de klacht. */}
+        <nav aria-label={t("blocksNav")} className="flex flex-wrap gap-1.5 border-b border-hairline pb-4">
+          {blocks.map(([block, items]) => {
+            const count = tally(items);
+            return (
+              <a
+                key={block}
+                href={`#blok-${block}`}
+                className="inline-flex min-h-11 items-center gap-2 rounded-md px-3 text-sm ring-1 ring-hairline ring-inset transition-colors hover:bg-canvas"
+              >
+                {t(`blocks.${block}` as "blocks.core")}
+                <span className="text-label text-ink-muted tabular-nums">
+                  {count.filled}/{count.total}
+                </span>
+              </a>
+            );
+          })}
+        </nav>
 
-                  <div className="flex shrink-0 items-center gap-2">
-                    {(test.perSide ? (["left", "right"] as const) : (["bilateral"] as const)).map(
-                      (side) => (
-                        <label key={side} className="flex items-center gap-1">
-                          {test.perSide && (
-                            <span className="w-3 text-[10px] text-ink-faint uppercase">
-                              {side === "left" ? "L" : "R"}
-                            </span>
-                          )}
-                          {test.unit === "score" ? (
-                            <select
-                              value={values[`${test.metricKey}|${side}`] ?? ""}
-                              onChange={(e) =>
-                                setValues((v) => ({
-                                  ...v,
-                                  [`${test.metricKey}|${side}`]: e.target.value,
-                                }))
+        {blocks.map(([block, items]) => {
+          const count = tally(items);
+          return (
+            <section key={block} id={`blok-${block}`} className="scroll-mt-4">
+              <div className="mb-2 flex flex-wrap items-baseline justify-between gap-3">
+                <h2 className="text-base font-semibold">{t(`blocks.${block}` as "blocks.core")}</h2>
+                <p className="text-xs text-ink-muted tabular-nums">
+                  {t("fieldsFilled", { filled: count.filled, total: count.total })}
+                </p>
+              </div>
+              <ul className="divide-y divide-hairline border-t border-hairline">
+                {items.map((test) => (
+                  <li
+                    key={test.metricKey}
+                    className="grid gap-x-4 gap-y-2 py-3 sm:grid-cols-[minmax(0,1fr)_auto_13rem] sm:items-center"
+                  >
+                    <div className="min-w-0">
+                      <span className="flex items-center gap-0.5 text-base">
+                        {test.label}
+                        <TestInfo
+                          name={test.label}
+                          about={test.about}
+                          unit={test.unit}
+                          direction={test.direction}
+                          laterality={test.laterality}
+                          bands={test.bands}
+                          protocolConfirmed={test.protocolConfirmed}
+                        />
+                      </span>
+                      <span className="text-xs text-ink-muted">
+                        {test.unit === "hand_lengths"
+                          ? t("handLengths")
+                          : (UNIT_LABELS[test.unit] ?? test.unit)}
+                        {/* Eerlijk zijn over wat dit getal straks oplevert. Een
+                            tester die weet dat een test niet scoort, weet ook
+                            waarom er later geen band staat. */}
+                        {test.bands === null && ` · ${t("noBandYet")}`}
+                        {!test.protocolConfirmed && ` · ${t("protocolNotFixed")}`}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {sidesOf(test).map((side) => {
+                        const key = keyOf(test, side);
+                        // Groot genoeg voor een duim, en 17px zodat iOS niet
+                        // inzoomt bij focus.
+                        const field =
+                          "min-h-[52px] w-[92px] rounded border border-hairline bg-surface px-2.5 text-right text-[17px] tabular-nums";
+                        const set = (raw: string) => setValues((v) => ({ ...v, [key]: raw }));
+                        return (
+                          <label key={side} className="flex items-center gap-1.5">
+                            <span
+                              className={
+                                test.perSide ? "w-3 text-xs text-ink-muted uppercase" : "sr-only"
                               }
-                              className="w-20 rounded border border-hairline bg-surface px-2 py-1.5 text-base"
                             >
-                              <option value="">-</option>
-                              {[0, 1, 2, 3].map((n) => (
-                                <option key={n} value={n}>
-                                  {n}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              type="number"
-                              inputMode="decimal"
-                              step={test.decimals === 0 ? "1" : "0.1"}
-                              value={values[`${test.metricKey}|${side}`] ?? ""}
-                              onChange={(e) =>
-                                setValues((v) => ({
-                                  ...v,
-                                  [`${test.metricKey}|${side}`]: e.target.value,
-                                }))
-                              }
-                              /* 16px, anders zoomt iOS bij focus in op het veld. */
-                              className="w-20 rounded border border-hairline bg-surface px-2 py-1.5 text-base"
-                            />
-                          )}
-                        </label>
-                      ),
-                    )}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
+                              {side === "bilateral" ? test.label : t(side).slice(0, 1)}
+                            </span>
+                            {test.unit === "score" ? (
+                              <select
+                                aria-label={side === "bilateral" ? undefined : `${test.label}, ${t(side)}`}
+                                value={values[key] ?? ""}
+                                onChange={(e) => set(e.target.value)}
+                                className={field}
+                              >
+                                <option value="">-</option>
+                                {[0, 1, 2, 3].map((n) => (
+                                  <option key={n} value={n}>
+                                    {n}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <input
+                                aria-label={side === "bilateral" ? undefined : `${test.label}, ${t(side)}`}
+                                type="number"
+                                inputMode="decimal"
+                                step={test.decimals === 0 ? "1" : "0.1"}
+                                value={values[key] ?? ""}
+                                onChange={(e) => set(e.target.value)}
+                                className={field}
+                              />
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    {/* Wat de waarde oplevert. Het bandwoord staat er voluit
+                        bij: de kleur alleen is in grijswaarden niets. */}
+                    <div aria-live="polite" className="flex flex-wrap items-center gap-1.5">
+                      {test.bands !== null &&
+                        sidesOf(test).map((side) => {
+                          const value = toValue(values[keyOf(test, side)]);
+                          if (value === null || test.bands === null) return null;
+                          const band = matchBand(value, test.bands);
+                          const max = Math.max(0, ...test.bands.map((b) => b.score ?? 0));
+                          return (
+                            <span
+                              key={side}
+                              style={{
+                                background: band
+                                  ? zoneFill(band.score ?? null, max)
+                                  : "var(--color-canvas)",
+                              }}
+                              className="rounded-chip px-2 py-0.5 text-label uppercase ring-1 ring-hairline ring-inset"
+                            >
+                              {side !== "bilateral" && `${t(side).slice(0, 1)} `}
+                              {band ? band.status.replace(/_/g, " ") : t("outsideBands")}
+                            </span>
+                          );
+                        })}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          );
+        })}
 
         {error && <p className="text-sm text-danger">{error}</p>}
 
         {/* De onderrand van een iPad is de thuisbalk. Zonder de inset valt
             de bewaarknop daar deels achter. */}
         <div className="sticky bottom-0 flex items-center justify-between gap-4 border-t border-hairline bg-canvas pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-          <span className="text-xs text-ink-muted">
-            {filled === 0 ? t("nothingEntered") : t("measurements", { count: filled })}
-          </span>
+          <div className="min-w-0">
+            <p className="text-base font-semibold tabular-nums">
+              {filled === 0 ? t("nothingEntered") : t("fieldsFilled", all)}
+            </p>
+            <p className="hidden text-xs text-ink-muted sm:block">{t("onlyTouched")}</p>
+          </div>
           <button
             type="submit"
             disabled={saving || filled === 0}
-            className="inline-flex min-h-11 items-center rounded bg-brand-700 px-4 text-sm text-white disabled:opacity-40"
+            className="inline-flex min-h-[52px] shrink-0 items-center rounded bg-brand-700 px-5 text-base font-semibold text-white disabled:opacity-40"
           >
             {saving ? t("saving") : t("save")}
           </button>

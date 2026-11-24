@@ -9,7 +9,7 @@ import { createHash } from "node:crypto";
  *
  *   DE DREMPELS VERANDEREN.
  *
- * De praktijk kan op /coach/library een referentieregel bijstellen of aanzetten.
+ * De praktijk kan op /praktijk/library een referentieregel bijstellen of aanzetten.
  * Zou een rapport bij het printen opnieuw classificeren, dan vertelt een afdruk
  * van vorig jaar een ander verhaal dan toen hij getekend werd. Daarom draagt
  * dit snapshot niet alleen de waarde en de band, maar ook de REGEL die hem gaf,

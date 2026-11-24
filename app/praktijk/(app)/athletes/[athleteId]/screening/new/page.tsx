@@ -1,0 +1,102 @@
+import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
+import { getLocale, getTranslations } from "next-intl/server";
+import { checkCoach, isUuid } from "@/lib/review/access";
+import { getAthleteProfile } from "@/lib/db/athletes";
+import { getAthletePopulation, getLibrary } from "@/lib/db/screening";
+import { ScreeningEntry, type EntryTest } from "@/components/coach/ScreeningEntry";
+
+export async function generateMetadata() {
+  const t = await getTranslations("titles");
+  return { title: t("athlete"), robots: { index: false, follow: false } };
+}
+
+export const dynamic = "force-dynamic";
+
+/**
+ * Een screening invoeren.
+ *
+ * De bibliotheek komt server-side binnen: welke tests er zijn, welke per zijde
+ * gaan, en of er op dit moment een band uit kan komen. Dat laatste staat bij het
+ * veld, niet pas op het resultaatscherm, zodat een tester weet wat hij meet.
+ */
+export default async function NewScreeningPage({
+  params,
+}: {
+  params: Promise<{ athleteId: string }>;
+}) {
+  const { athleteId } = await params;
+  if (!isUuid(athleteId)) notFound();
+
+  const access = await checkCoach();
+  if (access.kind === "anonymous") {
+    redirect(`/praktijk/login?next=/praktijk/athletes/${athleteId}/screening/new`);
+  }
+  if (access.kind !== "coach") notFound();
+
+  // Vandaag, want dit scherm toont de banden voordat er een datum gekozen is.
+  // De route rekent straks opnieuw met de werkelijke meetdatum.
+  const today = new Date().toISOString().slice(0, 10);
+
+  const [athlete, population] = await Promise.all([
+    getAthleteProfile(athleteId),
+    getAthletePopulation(athleteId, today),
+  ]);
+  if (!athlete || !population) notFound();
+
+  // Met de populatie erbij: welke drempel in dit scherm staat hangt af van wie
+  // er gemeten wordt. Zie lib/screening/population.ts.
+  const library = await getLibrary(population);
+
+  const t = await getTranslations("screening");
+  const locale = await getLocale();
+
+  // Afgeleide metrieken staan wel in de bibliotheek, want de rekenmotor heeft
+  // hun regel en eenheid nodig, maar horen niet in een invoerformulier: niemand
+  // typt N/kg met de hand in, en een veld ervoor nodigt uit tot een waarde die
+  // de motor meteen overschrijft.
+  const tests: EntryTest[] = library
+    .filter((item) => item.derivedFrom === null)
+    .map((item) => ({
+      testKey: item.testKey,
+      block: item.block,
+      label: locale === "nl" ? item.labelNl : item.labelEn,
+      metricKey: item.metricKey,
+      unit: item.unit,
+      perSide: item.laterality === "per_side",
+      decimals: item.decimals,
+      bands: item.rule?.classificationEnabled ? item.rule.bands : null,
+      protocolConfirmed: item.protocolConfirmed,
+      note: item.ruleNote,
+      about: locale === "nl" ? item.aboutNl : item.aboutEn,
+      direction: item.direction,
+      laterality: item.laterality,
+    }));
+
+  return (
+    <>
+      {/* Naar het dossier van deze atleet. Dat wees eerder naar het verloop,
+          omdat /praktijk/athletes/<id> toen niet bestond; sinds het dossier er
+          is hoort "terug" daarheen te gaan en niet een laag dieper. */}
+      <Link
+        href={`/praktijk/athletes/${athleteId}`}
+        className="inline-flex min-h-11 items-center text-xs text-ink-muted underline"
+      >
+        {athlete.name ?? t("title")}
+      </Link>
+
+      <header className="mt-1 mb-8">
+        <h1 className="text-2xl font-semibold tracking-tight">{t("new")}</h1>
+        <p className="mt-1 text-sm text-ink-muted">{t("intro")}</p>
+      </header>
+
+      {tests.length === 0 ? (
+        <p className="text-sm text-ink-faint">
+          {t("emptyLibrary", { command: "npm run seed:screening" })}
+        </p>
+      ) : (
+        <ScreeningEntry athleteId={athleteId} tests={tests} />
+      )}
+    </>
+  );
+}

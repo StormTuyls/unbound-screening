@@ -41,7 +41,13 @@ export interface TestDef {
   domain?: "clinical" | "performance";
   bodyRegion?: string;
   sourceNote?: string;
+  /** Uitleg voor tester en lezer: wat de test meet en hoe hij gaat. */
+  aboutNl?: string;
+  aboutEn?: string;
 }
+
+/** Uitleg per testsleutel; los van de tests, zodat de kine één plek bijhoudt. */
+export type AboutTexts = Record<string, { nl: string; en: string }>;
 
 
 export interface ProtocolDef {

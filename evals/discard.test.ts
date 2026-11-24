@@ -1,0 +1,231 @@
+import assert from "node:assert/strict";
+import { createHash, randomUUID } from "node:crypto";
+import { loadEnv } from "../scripts/env";
+
+loadEnv();
+
+import { admin } from "../scripts/adminDb";
+import { existsSync, readdirSync } from "node:fs";
+import { resolveDocumentPath, writeDocument } from "../lib/documents/store";
+import { query } from "../lib/db/sql";
+import { newToken } from "../lib/intake/session";
+import { addProposals } from "../lib/db/dossier";
+import { savePages, upsertDocument } from "../lib/db/medical";
+import { discardIntake } from "../lib/intake/discard";
+
+/**
+ * Een concept weggooien laat niets achter, en raakt niets anders aan.
+ *
+ * Dit pad wist medische gegevens op verzoek van de atleet zelf, zonder dat er
+ * een behandelaar aan te pas komt. Dat is precies het soort knop dat een keer
+ * te veel wist als niemand het vastlegt, dus deze test bewaakt drie dingen
+ * tegelijk:
+ *
+ * 1. Er blijft niets van dit concept staan. Niet in public, niet in medical,
+ *    en niet in de documentenmap. Net als bij de atleetpurge staat er een
+ *    bestand dat NIET in medical.documents geregistreerd is: een upload wordt
+ *    bewaard voordat de rij bestaat, dus dat is een echt scenario en een
+ *    implementatie die alleen de administratie volgt laat precies dat medische
+ *    document staan.
+ * 2. Het auditspoor blijft. "Niets achtergebleven" mag nooit betekenen dat ook
+ *    de regel verdween die zegt dat er iets weggegooid is.
+ * 3. Een INGEDIENDE intake wordt geweigerd. Dat is de veiligheidsgrens van de
+ *    hele functie: een dossier dat een behandelaar mogelijk al gelezen heeft
+ *    verdwijnt niet omdat iemand op een knop in een chatscherm drukt. De
+ *    tweede atleet in deze test bestaat alleen daarvoor.
+ *
+ * Zoals purge.test.ts: er wordt eerst gecontroleerd dat alles ER IS. Een test
+ * die alleen nullen achteraf telt, slaagt ook als de opbouw stilletjes niets
+ * deed.
+ *
+ * Draaien: npm run test:discard (vraagt een lokale stack).
+ */
+
+async function* once(bytes: Uint8Array) {
+  yield bytes;
+}
+
+async function makeAthlete(basis: string): Promise<string> {
+  const [row] = await admin<{ id: string }>(
+    `insert into public.athletes (locale, retention_mode, retention_basis)
+     values ('nl', 'indefinite', $1) returning id`,
+    [basis],
+  );
+  return row.id;
+}
+
+async function makeIntake(
+  athleteId: string,
+  status: "draft" | "submitted",
+): Promise<string> {
+  const { hash } = newToken();
+  const [row] = await admin<{ id: string }>(
+    `insert into public.intakes
+       (athlete_id, locale, access_token_hash, status, consent_granted_at, submitted_at)
+     values ($1, 'nl', $2, $3::text::public.intake_status, now(), case when $3::text = 'submitted' then now() end)
+     returning id`,
+    [athleteId, hash, status],
+  );
+  return row.id;
+}
+
+async function count(sql: string, params: unknown[]): Promise<number> {
+  const rows = await query<{ n: string }>(sql, params);
+  return Number(rows[0]?.n ?? 0);
+}
+
+async function countChat(intakeId: string): Promise<number> {
+  return count("select count(*) as n from public.chat_messages where intake_id = $1", [intakeId]);
+}
+
+async function main() {
+  // ---------------------------------------------------------------- opbouw
+  const athleteId = await makeAthlete("test: discard-pad");
+  const intakeId = await makeIntake(athleteId, "draft");
+
+  await admin(
+    `insert into public.chat_messages (intake_id, role, content)
+     values ($1, 'assistant', 'Wat is je volledige naam?'), ($1, 'user', 'Test Atleet')`,
+    [intakeId],
+  );
+
+  await addProposals(intakeId, [
+    {
+      fieldKey: "identity.full_name",
+      value: "Test Atleet",
+      proposedBy: "athlete",
+      sourceQuote: "Test Atleet",
+    },
+  ]);
+
+  // Een geregistreerd document, mét bestand in de documentenmap.
+  const bytes = Buffer.from("Verslag onderzoek\nLengte: 176 cm\n", "utf8");
+  const registeredPath = `${intakeId}/${randomUUID()}.txt`;
+  await writeDocument(registeredPath, once(bytes), 1_000_000);
+
+  const documentId = await upsertDocument({
+    intakeId,
+    storagePath: registeredPath,
+    originalFilename: "verslag.txt",
+    mimeType: "text/plain",
+    byteSize: bytes.length,
+    sha256: createHash("sha256").update(bytes).digest("hex"),
+    kind: "pdf_text",
+    pageCount: 1,
+  });
+  await savePages(documentId, [{ pageNumber: 1, text: bytes.toString("utf8") }]);
+
+  // En een wees: geupload, nooit geregistreerd. Zie de kop van dit bestand.
+  const orphanPath = `${intakeId}/${randomUUID()}.txt`;
+  await writeDocument(orphanPath, once(Buffer.from("gestrande upload", "utf8")), 1_000_000);
+
+  // ------------------------------------------------- het staat er echt
+  assert.equal(await countChat(intakeId), 2, "opbouw: de chatberichten staan er niet");
+  assert.ok(
+    (await count(`select count(*) as n from medical.field_proposals where intake_id = $1`, [intakeId])) > 0,
+    "opbouw: er staan geen voorstellen",
+  );
+  assert.equal(
+    await count(`select count(*) as n from medical.documents where intake_id = $1`, [intakeId]),
+    1,
+    "opbouw: het document staat er niet",
+  );
+  assert.equal(
+    await count(`select count(*) as n from medical.document_pages where document_id = $1`, [documentId]),
+    1,
+    "opbouw: de paginatekst staat er niet",
+  );
+
+  assert.equal(
+    readdirSync(resolveDocumentPath(intakeId)).length,
+    2,
+    "opbouw: er staan geen twee bestanden in de documentenmap",
+  );
+
+  // ------------------------------------------------------------ weggooien
+  const result = await discardIntake({ intakeId, actorId: null, actorKind: "athlete" });
+
+  assert.equal(result.discarded, true, "het concept is niet weggegooid");
+  assert.equal(result.athleteId, athleteId, "de functie noemt een andere atleet");
+  assert.equal(result.counts.chat_messages, 2, "de telling van de berichten klopt niet");
+  assert.equal(result.counts.documents, 1, "de telling van de documenten klopt niet");
+  assert.equal(result.filesRemoved, 2, "niet beide bestanden zijn opgeruimd");
+  assert.equal(result.storageEmpty, true, "er ligt nog iets onder de intake-prefix");
+
+  // -------------------------------------------------- er staat niets meer
+  for (const [label, sql] of [
+    ["intakes", `select count(*) as n from public.intakes where id = $1`],
+    ["documents", `select count(*) as n from medical.documents where intake_id = $1`],
+    ["field_proposals", `select count(*) as n from medical.field_proposals where intake_id = $1`],
+    ["dossier_fields", `select count(*) as n from medical.dossier_fields where intake_id = $1`],
+    ["injury_events", `select count(*) as n from medical.injury_events where intake_id = $1`],
+  ] as const) {
+    assert.equal(await count(sql, [intakeId]), 0, `${label} is niet leeg na het weggooien`);
+  }
+
+  assert.equal(await countChat(intakeId), 0, "de chatberichten staan er nog");
+  assert.equal(
+    await count(`select count(*) as n from medical.document_pages where document_id = $1`, [documentId]),
+    0,
+    "de paginatekst staat er nog",
+  );
+
+  assert.equal(
+    existsSync(resolveDocumentPath(intakeId)),
+    false,
+    "de intakemap staat er nog",
+  );
+
+  // De atleet zelf blijft. Dit gooit een concept weg, geen persoon.
+  assert.equal(
+    await count(`select count(*) as n from public.athletes where id = $1`, [athleteId]),
+    1,
+    "de atleet is meeverdwenen, en dat hoort niet",
+  );
+  // ------------------------------------------------------- het spoor blijft
+  assert.equal(
+    await count(
+      `select count(*) as n from public.audit_log
+        where action = 'purge' and entity_table = 'intakes' and entity_id = $1`,
+      [intakeId],
+    ),
+    1,
+    "er staat geen auditregel voor het weggegooide concept",
+  );
+
+  // ------------------------------------------------ tweede keer is geen fout
+  const again = await discardIntake({ intakeId, actorId: null, actorKind: "athlete" });
+  assert.equal(again.discarded, false, "een tweede poging meldt dat er iets weg is");
+
+  // --------------------------------------- een ingediende intake weigeren
+  const otherAthlete = await makeAthlete("test: discard weigert ingediend");
+  const submittedId = await makeIntake(otherAthlete, "submitted");
+
+  await assert.rejects(
+    () => discardIntake({ intakeId: submittedId, actorId: null, actorKind: "athlete" }),
+    /geen concept meer/,
+    "een ingediende intake werd niet geweigerd",
+  );
+  assert.equal(
+    await count(`select count(*) as n from public.intakes where id = $1`, [submittedId]),
+    1,
+    "de ingediende intake is toch verdwenen",
+  );
+
+  // ------------------------------------------------------------- opruimen
+  // Via de bestaande purgefunctie en niet met een losse delete: rol
+  // intake_server mag niets wissen in public.athletes, en medical.purge_athlete
+  // bestaat precies hiervoor.
+  for (const id of [athleteId, otherAthlete]) {
+    await query(`select medical.purge_athlete($1, null, 'system')`, [id]);
+  }
+
+  console.log(
+    "discard: concept volledig weg (rijen, paginatekst, beide bestanden), atleet en auditspoor blijven, ingediende intake geweigerd",
+  );
+}
+
+main().catch((error) => {
+  console.error(error);
+  process.exit(1);
+});

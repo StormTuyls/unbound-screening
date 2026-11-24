@@ -1,10 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
-import { createClient } from "@/lib/supabase/browser";
 import { AuthShell } from "@/components/auth/AuthShell";
 
 /**
@@ -26,6 +25,8 @@ export function CoachLogin({ next }: { next: string | null }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  // htmlFor: zonder wijst het label naar de toonknop, het eerste labelbare kind.
+  const passwordId = useId();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -33,12 +34,13 @@ export function CoachLogin({ next }: { next: string | null }) {
     setBusy(true);
     setError(null);
     try {
-      const supabase = createClient();
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
+      const result = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password }),
       });
-      if (signInError) throw new Error(t("noMatch"));
+      if (result.status === 429) throw new Error(t("throttled"));
+      if (!result.ok) throw new Error(t("noMatch"));
 
       // Taalvoorkeur uit het profiel in het cookie zetten. Een cookie hangt aan
       // een browser, een voorkeur aan een persoon: wie op een nieuw toestel
@@ -47,7 +49,10 @@ export function CoachLogin({ next }: { next: string | null }) {
       // login niet tegenhouden.
       await fetch("/api/locale/sync", { method: "POST" }).catch(() => {});
 
-      router.replace(next && next.startsWith("/") ? next : "/coach");
+      // Naar de voordeur en niet naar /praktijk. Sinds een atleet zijn eigen
+      // metingen kan openen, logt hij hier ook in; een vaste bestemming zou
+      // hem op een 404 zetten. / kijkt wie er is en kiest de juiste helft.
+      router.replace(next && next.startsWith("/") ? next : "/");
       router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "something went wrong");
@@ -71,7 +76,9 @@ export function CoachLogin({ next }: { next: string | null }) {
         className="mt-0"
       >
         <label className="block">
-          <span className="text-label uppercase text-ink-faint">{t("workEmail")}</span>
+          {/* Niet "werk-e-mail": sinds een atleet hier ook inlogt is dit niet
+              langer alleen een personeelsscherm. */}
+          <span className="text-label uppercase text-ink-muted">{t("email")}</span>
           <input
             value={email}
             onChange={(event) => setEmail(event.target.value)}
@@ -83,7 +90,7 @@ export function CoachLogin({ next }: { next: string | null }) {
           />
         </label>
 
-        <label className="mt-4 block">
+        <label className="mt-4 block" htmlFor={passwordId}>
           <span className="flex items-center justify-between">
             <span className="text-label uppercase text-ink-faint">{t("password")}</span>
             <button
@@ -95,6 +102,7 @@ export function CoachLogin({ next }: { next: string | null }) {
             </button>
           </span>
           <input
+            id={passwordId}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             type={showPassword ? "text" : "password"}
@@ -122,21 +130,14 @@ export function CoachLogin({ next }: { next: string | null }) {
         {tPassword("forgotLink")}
       </Link>
 
-      {/* De andere voordeur. Er zijn twee loginschermen en niets wees naar het
-          andere, dus wie op de verkeerde belandde kwam er alleen uit door de URL
-          te raden.
-
-          /start bestaat alleen in de intake-app. Dit bestand staat in beide
-          repo's en is daar byte-identiek; in de screeningapp wees de link op
-          een 404. Vandaar het adres uit de omgeving: daar staat het, hier
-          niet, en de uitdrukking blijft in beide repo's dezelfde. */}
+      {/* Voor wie hier nog geen account heeft. Een atleet MET een account
+          meldt zich gewoon op dit formulier aan; de voordeur op / brengt hem
+          daarna bij zijn metingen. Deze link is er dus niet meer om de
+          verkeerde bezoeker weg te sturen, maar om een nieuwe te laten
+          beginnen waar een dossier begint. */}
       <Link
-        href={
-          process.env.NEXT_PUBLIC_INTAKE_URL
-            ? `${process.env.NEXT_PUBLIC_INTAKE_URL}/start`
-            : "/start"
-        }
-        className="mt-2 flex min-h-11 items-center justify-center text-xs text-ink-faint underline-offset-2 hover:underline"
+        href="/start"
+        className="mt-2 flex min-h-11 items-center justify-center text-xs text-ink-muted underline-offset-2 hover:underline"
       >
         {t("toAthlete")}
       </Link>

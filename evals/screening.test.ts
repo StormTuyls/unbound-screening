@@ -4,7 +4,7 @@ import { loadEnv } from "../scripts/env";
 
 loadEnv();
 
-import { appDb } from "../lib/supabase/service";
+import { admin } from "../scripts/adminDb";
 import { query } from "../lib/db/sql";
 import {
   createSession,
@@ -38,22 +38,14 @@ import { ensureFrozenScreening, getScreeningReport } from "../lib/report/screeni
  * en niets dat klaagt. Die staat hieronder apart.
  */
 
-// Via de service-rol en niet via de directe verbinding: intake_server heeft met
-// opzet alleen select op public.athletes. Dezelfde reden als in purge.test.ts.
-const db = appDb();
-const { data: athleteRow, error: athleteError } = await db
-  .from("athletes")
-  .insert({
-    full_name: "Screening Testatleet",
-    email: `screening-${randomUUID()}@example.invalid`,
-    sport: "sprint",
-    sex: "female",
-    retention_basis: "screening-test",
-  })
-  .select("id")
-  .single();
-if (athleteError) throw new Error(`atleet maken mislukt: ${athleteError.message}`);
-const athleteId = athleteRow!.id as string;
+// Via de admin-verbinding en niet via de app: een atleet zonder account maakt de
+// app nooit zelf aan. Dezelfde reden als in purge.test.ts.
+const [athleteRow] = await admin<{ id: string }>(
+  `insert into public.athletes (full_name, email, sport, sex, retention_basis)
+   values ('Screening Testatleet', $1, 'sprint', 'female', 'screening-test') returning id`,
+  [`screening-${randomUUID()}@example.invalid`],
+);
+const athleteId = athleteRow.id;
 const actor = { id: null };
 
 try {
@@ -243,7 +235,7 @@ try {
   // --- het bevroren rapport -------------------------------------------------
   //
   // Dit is waarom bevriezen bij een screening scherper is dan bij een intake.
-  // De praktijk kan op /coach/library een drempel bijstellen; een afdruk van
+  // De praktijk kan op /praktijk/library een drempel bijstellen; een afdruk van
   // vorig jaar hoort dat niet mee te maken.
 
   const frozenV1 = await ensureFrozenScreening(secondId, actor, null);
@@ -327,9 +319,8 @@ try {
   );
 
   // De cascade ruimt sessies, items, proeven, metingen en uitkomsten op.
-  // Via de service-rol, want delete op public.athletes is bij authenticated
-  // weggehaald en intake_server mag er sowieso niet schrijven.
-  await db.from("athletes").delete().eq("id", athleteId);
+  // Via de admin-verbinding: intake_server mag geen atleten verwijderen.
+  await admin("delete from public.athletes where id = $1", [athleteId]);
 }
 
 process.exit(0);

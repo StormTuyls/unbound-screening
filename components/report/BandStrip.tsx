@@ -1,4 +1,5 @@
 import type { SnapshotBand } from "@/lib/report/screeningSnapshot";
+import { scaleOf } from "@/lib/screening/bands";
 
 /**
  * Waar een meting staat op de schaal van haar eigen referentieregel.
@@ -41,6 +42,8 @@ export interface StripMarker {
   /** "L", "R", of leeg bij een tweebenige test. */
   label: string;
   previous?: number | null;
+  /** Kleur van de zijde; zonder kleur inkt, zoals op het scherm. */
+  color?: string;
 }
 
 /**
@@ -51,38 +54,13 @@ export interface StripMarker {
  * slechtste. Door te delen door de hoogste score in dezelfde lijst klopt het
  * voor beide. Dit is de fout die eerder op het sessiescherm stond.
  */
-function zoneFill(score: number | null, max: number): string {
+export function zoneFill(score: number | null, max: number): string {
   if (score === null || max <= 0) return "var(--color-canvas)";
   const ratio = score / max;
   if (ratio <= 0) return "var(--color-danger-band)";
   // Geen vlak: de hoogste band is het papier zelf.
   if (ratio >= 0.66) return "none";
   return "var(--color-warn-band)";
-}
-
-/**
- * Het bereik dat de tekening beslaat.
- *
- * De eindbanden zijn open ("alles onder 75", "alles vanaf 85") en hebben dus
- * geen rand om op te tekenen. Die krijgen een marge van een kwart van het
- * eindige bereik, zodat ze zichtbaar doorlopen zonder een grens te suggereren
- * die er niet is. Een waarde buiten alle banden rekt het bereik op in plaats
- * van tegen de rand geplakt te worden: een meting die er ver naast zit hoort er
- * ver naast te staan.
- */
-function domainOf(bands: SnapshotBand[], values: number[]): [number, number] {
-  const edges = bands.flatMap((b) => [b.gte, b.lt].filter((n): n is number => n !== undefined));
-  if (edges.length === 0) return [0, 1];
-  let lo = Math.min(...edges);
-  let hi = Math.max(...edges);
-  const pad = (hi - lo || Math.abs(lo) || 1) * 0.25;
-  lo -= pad;
-  hi += pad;
-  for (const v of values) {
-    if (v < lo) lo = v - pad * 0.5;
-    if (v > hi) hi = v + pad * 0.5;
-  }
-  return hi > lo ? [lo, hi] : [lo - 1, hi + 1];
 }
 
 export function BandStrip({
@@ -100,7 +78,7 @@ export function BandStrip({
   const values = shown.flatMap((m) =>
     typeof m.previous === "number" ? [m.value, m.previous] : [m.value],
   );
-  const [lo, hi] = domainOf(bands, values);
+  const [lo, hi] = scaleOf(bands, values);
   const x = (v: number) => GUTTER + ((v - lo) / (hi - lo)) * (W - GUTTER - 2);
   const maxScore = Math.max(0, ...bands.map((b) => b.score ?? 0));
 
@@ -173,6 +151,8 @@ export function BandStrip({
         const cx = x(m.value);
         const hasPrev = typeof m.previous === "number" && m.previous !== m.value;
         const px = hasPrev ? x(m.previous as number) : cx;
+        const ink = m.color ?? "var(--color-ink)";
+        const trail = m.color ?? "var(--color-ink-muted)";
         return (
           <g key={`${m.label}-${i}`}>
             {m.label && (
@@ -193,7 +173,7 @@ export function BandStrip({
                   x2={cx}
                   y1={y}
                   y2={y}
-                  stroke="var(--color-ink-muted)"
+                  stroke={trail}
                   strokeWidth={0.8}
                 />
                 <circle
@@ -201,7 +181,7 @@ export function BandStrip({
                   cy={y}
                   r={2.4}
                   fill="var(--color-surface)"
-                  stroke="var(--color-ink-muted)"
+                  stroke={trail}
                   strokeWidth={1}
                 />
               </>
@@ -210,7 +190,7 @@ export function BandStrip({
                 staat. Een staafje van een haar breed ging op in de
                 bandgrenzen; een dichte stip is op het eerste gezicht de
                 meting en niets anders. */}
-            <circle cx={cx} cy={y} r={3} fill="var(--color-ink)" />
+            <circle cx={cx} cy={y} r={3} fill={ink} />
           </g>
         );
       })}

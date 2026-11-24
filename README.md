@@ -1,22 +1,50 @@
 # unbound-screening
 
-Screening en performancediagnostiek. Deelt de databank met `athlete-intake`, deelt geen code.
+Eén app voor een sportpraktijk. Atleten leveren hun voorgeschiedenis aan (een gesprek met een
+assistent, documenten die worden uitgelezen, en een behandelaar die alles nakijkt) en lezen hun
+metingen. Behandelaars voeren screenings in en krijgen rapporten tegen referentiewaarden.
 
-Gekopieerd uit `athlete-intake` en niet gedeeld, omdat de intake wordt overgedragen aan de klant en
-de screening niet. De prijs daarvan staat vast en hoort geaccepteerd te worden: een fix in
-`lib/db/sql.ts` moet twee keer gebeuren. Zie `docs/screening-app.md` in die repo.
+Draait op één Postgres en een documentenmap op schijf. Geen Supabase meer in de app: eigen
+aanmeldingen (`lib/auth/`), eigen opslag (`lib/documents/`), en SQL via `lib/db/sql.ts`. De
+voormalige intake-app (`athlete-intake`) is een bevroren overdrachtskopie en draait niet meer.
+Hoe de beveiliging in elkaar zit: `docs/beveiliging.md`.
 
 ## Opzetten
 
 ```bash
 cp lib/screening/afkapwaarden.voorbeeld.ts lib/screening/afkapwaarden.ts
+cp .env.example .env.local        # en invullen
 npm install
-npm run typecheck
-npm test
+npx supabase start                # lokaal alleen nog als Postgres
+npm run db:reset                  # migraties, rol intake_server, bibliotheek
+npm run seed:dev                  # zes atleten en een behandelaar
+npm run dev -- --port 3100
 ```
+
+Inloggen als behandelaar: `coach@unbound.test` / `screening-dev`. Een behandelaar of beheerder
+aanmaken: `npx tsx scripts/create-coach.ts e-mail "Naam" physio|coach [--admin]`.
 
 De echte afkapwaarden staan niet in git. Zonder dat kopieertje bouwt de app niet, en dat is met
 opzet: wat in de eerste commit zit, staat er voorgoed in.
+
+### In een container
+
+```bash
+npm run docker:up                 # app op :3200, Mailpit op :8025
+```
+
+Mail die de app verstuurt (herstellinks, uitnodigingen) komt lokaal in Mailpit terecht:
+http://localhost:8025.
+
+### Testen
+
+```bash
+npm run typecheck && npm run lint && npm test
+npm run test:purge && npm run test:discard && npm run test:screening   # tegen de lokale databank
+```
+
+`test:purge` en `test:discard` zijn het bewijs dat verwijderen per tabel en per bestand niets
+achterlaat. Draai ze na elke wijziging aan de databank of de documentenmap.
 
 ## De afkapwaarden
 
@@ -40,40 +68,26 @@ data als die er is; de validator zelf wordt altijd getest.
    26 en 116 tot 117, en `evals/unit/screening-evaluate.test.ts` regel 23 tot 26. Het zijn de
    grenzen van de passieve SLR, gebruikt als voorbeeld. Vervang ze door neutrale getallen en
    controleer dat beide tests nog slagen.
-2. **De Supabase-projectverwijzing.** Stond in `vercel.json` van de intake, in de CSP. Hier is nog
-   geen deployconfiguratie; zet de projecturl als env-variabele zodra die er komt.
-3. **De praktijk moet het weten.** Het protocol en de benchmarks komen uit haar eigen bestanden. Dat
+2. **De praktijk moet het weten.** Het protocol en de benchmarks komen uit haar eigen bestanden. Dat
    is geen formaliteit.
 
 ## Databank
 
-Dezelfde Supabase als de intake. Eigendom per tabel: alles onder `medical.screening_*` en de
-bibliotheektabellen in `public` horen hier, de intaketabellen daar, en `athletes`, `profiles` en
-`audit_log` zijn gedeeld.
+Alle migraties staan in `supabase/migrations/`; `npm run db:reset` bouwt de databank vanaf nul. De
+app verbindt als `intake_server`, met per tabel en per kolom alleen wat ze doet. Testen en seeds
+gebruiken een eigen admin-verbinding (`scripts/adminDb.ts`, `ADMIN_DATABASE_URL`).
 
-De acht migraties in `supabase/migrations/` zijn hier gekopieerd en staan nog steeds ook in
-`athlete-intake`. Dat moet nog uit elkaar, samen met een `baseline.sql` voor lokaal ontwikkelen.
-Zie §2b van `screening-app.md`.
+Lokaal levert de Supabase-stack nog de Postgres. De migraties zelf leunen nog op een paar dingen die
+alleen daar bestaan (het `auth`-schema in de eerste migraties, de rollen `anon` en `authenticated`).
+Voor een gewone Postgres op de eigen server komt er in fase 6 een baseline.
 
-**Nog niet beslist:** een eigen databankrol `screening_server`, of dezelfde `intake_server` als de
-intake. Zie §2 van hetzelfde document.
+### Een atleet verwijderen
 
-### Deze repo bezit purge_athlete
+Loopt via `medical.purge_athlete()`, dat de rijen in één transactie wist en per tabel telt. De
+screeningtabellen hangen met `athlete_id ... on delete cascade` aan `public.athletes`, dus ook dat
+wissen gebeurt in de databank. Daarna ruimt `lib/purge/purge.ts` de documentenmap en het
+inlogaccount op, en controleert dat er niets meer staat.
 
-Het wissen van een atleet loopt via `medical.purge_athlete()`. Die functie begon in de intake, maar
-`20261009090300_screening_purge.sql` doet er een `create or replace` overheen die de
-screeningtabellen meetelt. Die migratie hoort hier, dus die versie is van deze repo.
-
-De drie screeningtabellen hangen met `athlete_id ... on delete cascade` aan `public.athletes`. Het
-wissen gebeurt dus in de databank en niet in applicatiecode, aan geen van beide kanten.
-
-**Afspraak:** alleen deze repo herdefinieert `purge_athlete`. De json die hij teruggeeft is het
-contract met de intake; daar staat het als `PurgeCounts` in `lib/purge/db.ts`. Verandert de vorm,
-dan verandert dat type mee. Een veld weghalen zonder dat de intake het weet geeft daar `undefined`
-en geen foutmelding.
-
-## Wat hier niet in zit
-
-De intake: het dossier, de chat, de documenten, het rapport van de intake. `lib/db/athletes.ts` is
-hier een uitgeklede kopie die alleen de identiteit en de populatievelden ophaalt, zonder de intakes
-en zonder het dossier.
+De json die de functie teruggeeft is `PurgeCounts` in `lib/purge/db.ts`. Verandert de vorm, dan
+verandert dat type mee: een veld dat verdwijnt zonder dat het type het weet, geeft `undefined` en
+geen foutmelding.

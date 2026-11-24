@@ -1,0 +1,71 @@
+# De app in een container naast de lokale databank, op http://localhost:3200.
+#
+#   npm run docker:up     bouwen en starten
+#   npm run docker:down   stoppen
+#
+# Waarom de socat-helper: de app praat met Postgres op 127.0.0.1:54322, want dat
+# adres staat in DATABASE_URL en geldt ook voor de dev-server op de Mac. In een
+# container wijst 127.0.0.1 naar de container zelf. De helper stuurt die poort
+# door naar de databankcontainer, en 127.0.0.1:1025 naar Mailpit, zodat de app
+# niets hoeft te weten.
+#
+# De helper bezit het netwerk en de app leent het, niet andersom. Andersom
+# verloor de helper zijn netwerk zodra de app herstartte, en dan stond de app na
+# een stroomonderbreking zonder databank.
+#
+# shortcut: de databank draait nog in de lokale Supabase-stack (alleen als
+# Postgres). Op de eigen server komt hier een Postgres-container, en wordt de
+# helper overbodig.
+
+services:
+  supabase-bridge:
+    image: alpine/socat:1.8.0.1
+    entrypoint:
+      - sh
+      - -c
+      - >-
+        socat TCP-LISTEN:1025,fork,reuseaddr TCP:mailpit:1025 &
+        exec socat TCP-LISTEN:54322,fork,reuseaddr TCP:supabase_db_unbound-screening:5432
+    ports:
+      - "3200:3000"
+    networks:
+      - supabase
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_APP_URL: http://localhost:3200
+    env_file: .env.local
+    environment:
+      NEXT_PUBLIC_APP_URL: http://localhost:3200
+    network_mode: service:supabase-bridge
+    # De aangeleverde documenten. Een benoemd volume, zodat ze een nieuwe image
+    # en een herstart overleven; op de eigen server wordt dit een map op een
+    # versleutelde schijf, die mee in de backup gaat.
+    volumes:
+      - documents:/app/data/documents
+    depends_on:
+      - supabase-bridge
+    restart: unless-stopped
+
+  # Vangt alle mail op die de app lokaal verstuurt (herstellinks, uitnodigingen).
+  # Lezen op http://localhost:8025. Op de eigen server zet je SMTP_URL naar een
+  # echte mailserver en valt deze weg.
+  mailpit:
+    image: axllent/mailpit:v1.21.8
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+    networks:
+      - supabase
+    restart: unless-stopped
+
+volumes:
+  documents:
+
+networks:
+  supabase:
+    name: supabase_network_unbound-screening
+    external: true

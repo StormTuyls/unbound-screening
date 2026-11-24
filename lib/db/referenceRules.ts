@@ -27,6 +27,10 @@ export interface RuleView {
   metricKey: string;
   testLabelNl: string;
   testLabelEn: string;
+  testKey: string;
+  testAboutNl: string | null;
+  testAboutEn: string | null;
+  laterality: "bilateral" | "per_side" | "either";
   block: string;
   unit: string;
   direction: string;
@@ -53,6 +57,10 @@ function toView(row: Record<string, unknown>): RuleView | null {
     metricKey: row.metric_key as string,
     testLabelNl: row.test_label_nl as string,
     testLabelEn: row.test_label_en as string,
+    testKey: row.test_key as string,
+    testAboutNl: (row.about_nl as string | null) ?? null,
+    testAboutEn: (row.about_en as string | null) ?? null,
+    laterality: row.laterality as RuleView["laterality"],
     block: row.block as string,
     unit: row.unit as string,
     direction: row.direction as string,
@@ -74,6 +82,7 @@ const SELECT = `
          r.classification_enabled, r.evidence, r.source_citation, r.source_note,
          m.unit, m.direction, m.decimals,
          t.label_nl as test_label_nl, t.label_en as test_label_en, t.block, t.sort_order,
+         t.key as test_key, t.about_nl, t.about_en, t.laterality,
          p.protocol_confirmed,
          (select count(*) from public.reference_rules v where v.rule_key = r.rule_key) as versions
     from public.reference_rules r
@@ -84,7 +93,8 @@ const SELECT = `
 /** De geldende regels, een per metriek. Geen audit: dit is taxonomie. */
 export async function listRules(): Promise<RuleView[]> {
   const rows = await query<Record<string, unknown>>(
-    `${SELECT} where r.retired_at is null order by t.block, t.sort_order, r.metric_key`,
+    `${SELECT} where r.retired_at is null and t.retired_at is null
+      order by t.block, t.sort_order, r.metric_key`,
   );
   return rows.map(toView).filter((r): r is RuleView => r !== null);
 }
@@ -95,6 +105,101 @@ export async function getRule(metricKey: string): Promise<RuleView | null> {
     [metricKey],
   );
   return row ? toView(row) : null;
+}
+
+/** Een test zoals de referentiepagina hem nodig heeft, met of zonder regel. */
+export interface TestSummary {
+  testKey: string;
+  metricKey: string;
+  block: string;
+  labelNl: string;
+  labelEn: string;
+  aboutNl: string | null;
+  aboutEn: string | null;
+  unit: string;
+  direction: string;
+  laterality: "bilateral" | "per_side" | "either";
+  protocolConfirmed: boolean;
+}
+
+const TEST_SELECT = `
+  select t.key as test_key, m.key as metric_key, t.block, t.label_nl, t.label_en,
+         t.about_nl, t.about_en, m.unit, m.direction, t.laterality, p.protocol_confirmed
+    from public.metric_definitions m
+    join public.test_definitions t on t.key = m.test_key and t.retired_at is null
+    join public.test_protocols p on p.test_key = t.key and p.retired_at is null`;
+
+function toTest(row: Record<string, unknown>): TestSummary {
+  return {
+    testKey: row.test_key as string,
+    metricKey: row.metric_key as string,
+    block: row.block as string,
+    labelNl: row.label_nl as string,
+    labelEn: row.label_en as string,
+    aboutNl: (row.about_nl as string | null) ?? null,
+    aboutEn: (row.about_en as string | null) ?? null,
+    unit: row.unit as string,
+    direction: row.direction as string,
+    laterality: row.laterality as TestSummary["laterality"],
+    protocolConfirmed: row.protocol_confirmed as boolean,
+  };
+}
+
+/** De test achter een metriek, ook als er (nog) geen regel op staat. */
+export async function getTestByMetric(metricKey: string): Promise<TestSummary | null> {
+  const row = await queryOne<Record<string, unknown>>(`${TEST_SELECT} where m.key = $1`, [
+    metricKey,
+  ]);
+  return row ? toTest(row) : null;
+}
+
+/**
+ * Tests waar nog geen enkele metriek een geldende regel heeft.
+ *
+ * Per test en niet per metriek: bij een test met een gemeten en een gerekende
+ * metriek staat de regel vaak op de gerekende, en dan hoort de gemeten hier
+ * niet als "zonder regel" te verschijnen. De link gaat naar de eerste gemeten
+ * metriek, want daar hoort een eerste regel.
+ */
+export async function listTestsWithoutRule(): Promise<TestSummary[]> {
+  const rows = await query<Record<string, unknown>>(
+    `${TEST_SELECT}
+      where m.derived_key is null
+        and not exists (
+          select 1 from public.metric_definitions m2
+            join public.reference_rules r on r.metric_key = m2.key and r.retired_at is null
+           where m2.test_key = t.key)
+      order by t.block, t.sort_order, m.sort_order`,
+  );
+  const seen = new Set<string>();
+  return rows.map(toTest).filter((test) => !seen.has(test.testKey) && seen.add(test.testKey));
+}
+
+/**
+ * De uitleg bij een test bewaren. Leeg wordt null: dan toont de app weer alleen
+ * de feiten. De seed laat een uitleg die hier gezet is staan.
+ */
+export async function setTestAbout(
+  testKey: string,
+  about: { nl: string | null; en: string | null },
+  actor: { id: string | null; isAdmin: boolean },
+): Promise<boolean> {
+  const updated = await query(
+    `update public.test_definitions set about_nl = $2, about_en = $3
+      where key = $1 and retired_at is null returning key`,
+    [testKey, about.nl, about.en],
+  );
+  if (updated.length === 0) return false;
+  await logAudit({
+    actorId: actor.id,
+    actorKind: actor.isAdmin ? "admin" : "coach",
+    action: "update",
+    entitySchema: "public",
+    entityTable: "test_definitions",
+    entityId: testKey,
+    detail: { about: true },
+  });
+  return true;
 }
 
 /** De oudere versies, nieuwste eerst. De geschiedenis van een drempel. */

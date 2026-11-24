@@ -26,7 +26,7 @@ export default async function ForgotPage({
   searchParams: Promise<{ from?: string }>;
 }) {
   const { from } = await searchParams;
-  const backTo = from === "coach" ? "/coach/login" : "/start";
+  const backTo = from === "coach" ? "/praktijk/login" : "/start";
 
   return <ForgotPassword backTo={backTo} />;
 }

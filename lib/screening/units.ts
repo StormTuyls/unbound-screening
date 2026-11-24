@@ -53,17 +53,35 @@ const SUFFIX: Partial<Record<Unit, string>> = {
   deg: "°",
   cm: " cm",
   mm: " mm",
+  m: " m",
   n: " N",
+  n_per_kg: " N/kg",
+  nm: " Nm",
+  nm_per_kg: " Nm/kg",
+  n_per_s: " N/s",
   xbw: "×BW",
   s: " s",
+  ms: " ms",
+  m_per_s: " m/s",
+  w: " W",
   kg: " kg",
+  reps: " reps",
   percent: "%",
+  // Een telling of verhouding heeft geen eenheid achter het getal; als label
+  // valt hij terug op zijn naam.
+  count: "",
+  ratio: "",
   score: "",
   hand_lengths: "",
 };
 
 export function unitSuffix(unit: string): string {
   return SUFFIX[unit as Unit] ?? ` ${unit}`;
+}
+
+/** De eenheid op zichzelf, voor een kolom of label: "°" en niet "deg". */
+export function unitLabel(unit: string, handLengths: string): string {
+  return unit === "hand_lengths" ? handLengths : unitSuffix(unit).trim() || unit;
 }
 
 /**

@@ -2,7 +2,8 @@ import { loadEnv } from "./env";
 loadEnv();
 
 import { randomUUID } from "node:crypto";
-import { appDb } from "../lib/supabase/service";
+import { admin } from "./adminDb";
+import { hashPassword } from "../lib/auth/password";
 import { query } from "../lib/db/sql";
 import { createSession, getHistory, getLibrary, toSpecs } from "../lib/db/screening";
 import { evaluate } from "../lib/screening/evaluate";
@@ -27,7 +28,7 @@ const COACH_EMAIL = "coach@unbound.test";
 const COACH_PASSWORD = "screening-dev";
 const MERK = "seed-dev";
 
-const LOKAAL = /^(https?:\/\/)?(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/;
+const LOKAAL = /@(127\.0\.0\.1|localhost|\[::1\])(:|\/|$)/;
 
 /** Zes atleten; de laatste is nooit gescreend, want die regel moet het scherm ook aankunnen. */
 const ATLETEN = [
@@ -63,48 +64,43 @@ function waardeIn(bands: Band[] | null, decimals: number, keuze: number): number
 }
 
 async function main() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  if (!LOKAAL.test(url)) {
-    console.error(`weigert te draaien tegen ${url || "(geen URL)"}: alleen de lokale stack`);
-    process.exit(1);
+  // Beide verbindingen moeten lokaal zijn: de app-verbinding en de admin.
+  for (const url of [process.env.DATABASE_URL ?? "", process.env.ADMIN_DATABASE_URL ?? process.env.SUPABASE_DB_URL ?? "postgresql://x@127.0.0.1:54322/x"]) {
+    if (!LOKAAL.test(url)) {
+      console.error("weigert te draaien tegen een databank buiten deze machine: alleen lokaal");
+      process.exit(1);
+    }
   }
-
-  const db = appDb();
 
   // ── de coach ───────────────────────────────────────────────────────────────
-  const { data: bestaande } = await db.auth.admin.listUsers({ perPage: 200 });
-  const alAanwezig = bestaande?.users.find((u) => u.email === COACH_EMAIL);
-
-  let coachId: string;
-  if (alAanwezig) {
-    coachId = alAanwezig.id;
-    await db.auth.admin.updateUserById(coachId, { password: COACH_PASSWORD });
-  } else {
-    const { data, error } = await db.auth.admin.createUser({
-      email: COACH_EMAIL,
-      password: COACH_PASSWORD,
-      email_confirm: true,
-    });
-    if (error || !data.user) throw new Error(`coach maken mislukt: ${error?.message}`);
-    coachId = data.user.id;
-  }
-
-  const { error: profielFout } = await db
-    .from("profiles")
-    .upsert({ id: coachId, role: "coach", full_name: "Fre Vanderstukken", locale: "nl" });
-  if (profielFout) throw new Error(`profiel mislukt: ${profielFout.message}`);
+  const [{ id: coachId }] = await admin<{ id: string }>(
+    `insert into public.accounts (email, password_hash) values ($1, $2)
+     on conflict (email) do update set password_hash = excluded.password_hash
+     returning id`,
+    [COACH_EMAIL, await hashPassword(COACH_PASSWORD)],
+  );
+  await admin(
+    `insert into public.profiles (id, role, practitioner_kind, full_name, locale)
+     values ($1, 'coach', 'physio', 'Fre Vanderstukken', 'nl')
+     on conflict (id) do update
+       set role = excluded.role, practitioner_kind = excluded.practitioner_kind,
+           full_name = excluded.full_name`,
+    [coachId],
+  );
 
   // ── schoon beginnen ────────────────────────────────────────────────────────
   // medical.purge_athlete() is het nette pad maar vraagt een verzoekregel en een
   // grond; voor wegwerpdata uit deze seed is de cascade genoeg. Alleen rijen met
   // ons eigen merk, zodat een handmatig aangemaakte atleet blijft staan.
-  const { data: oud } = await db
-    .from("athletes")
-    .select("id")
-    .eq("retention_basis", MERK);
-  for (const rij of oud ?? []) {
-    await query("delete from medical.screening_notes where athlete_id = $1", [rij.id]);
-    await query(
+  const oud = await admin<{ id: string }>(
+    "select id from public.athletes where retention_basis = $1",
+    [MERK],
+  );
+  // Opruimen gaat als admin: intake_server mag bewust geen notities of
+  // metingen wissen, dus via de app-verbinding faalt een tweede run.
+  for (const rij of oud) {
+    await admin("delete from medical.screening_notes where athlete_id = $1", [rij.id]);
+    await admin(
       `delete from medical.measurements
         where test_item_id in (
           select ti.id from medical.test_items ti
@@ -112,19 +108,19 @@ async function main() {
            where s.athlete_id = $1)`,
       [rij.id],
     );
-    await query(
+    await admin(
       `delete from medical.derived_results
         where session_id in (select id from medical.screening_sessions where athlete_id = $1)`,
       [rij.id],
     );
-    await query(
+    await admin(
       `delete from medical.test_items
         where session_id in (select id from medical.screening_sessions where athlete_id = $1)`,
       [rij.id],
     );
-    await query("delete from medical.screening_reports where athlete_id = $1", [rij.id]);
-    await query("delete from medical.screening_sessions where athlete_id = $1", [rij.id]);
-    await db.from("athletes").delete().eq("id", rij.id);
+    await admin("delete from medical.screening_reports where athlete_id = $1", [rij.id]);
+    await admin("delete from medical.screening_sessions where athlete_id = $1", [rij.id]);
+    await admin("delete from public.athletes where id = $1", [rij.id]);
   }
 
   // ── de bibliotheek ─────────────────────────────────────────────────────────
@@ -141,21 +137,21 @@ async function main() {
   let sessies = 0;
 
   for (const [index, a] of ATLETEN.entries()) {
-    const { data: rij, error } = await db
-      .from("athletes")
-      .insert({
-        full_name: a.naam,
-        email: `${a.naam.toLowerCase().replace(/[^a-z]+/g, ".")}@example.invalid`,
-        date_of_birth: a.geboren,
-        sport: a.sport,
-        discipline: a.discipline,
-        sex: a.sex,
-        retention_basis: MERK,
-      })
-      .select("id")
-      .single();
-    if (error || !rij) throw new Error(`atleet ${a.naam}: ${error?.message}`);
-    const athleteId = rij.id as string;
+    const [rij] = await admin<{ id: string }>(
+      `insert into public.athletes
+         (full_name, email, date_of_birth, sport, discipline, sex, retention_basis)
+       values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+      [
+        a.naam,
+        `${a.naam.toLowerCase().replace(/[^a-z]+/g, ".")}@example.invalid`,
+        a.geboren,
+        a.sport,
+        a.discipline,
+        a.sex,
+        MERK,
+      ],
+    );
+    const athleteId = rij.id;
 
     if (a.dagen === null) continue;
 

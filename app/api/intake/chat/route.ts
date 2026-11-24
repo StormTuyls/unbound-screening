@@ -1,0 +1,217 @@
+import { NextResponse } from "next/server";
+import { apiMessages } from "@/lib/i18n/server";
+import { NUDGES, type NudgeKey } from "@/lib/claude/prompts/chat";
+import { query } from "@/lib/db/sql";
+import { requireEditableIntake } from "@/lib/intake/session";
+import { badRequest, handleError } from "@/lib/http";
+import { addProposals, getProposals, syncDossier } from "@/lib/db/dossier";
+import { skipFields } from "@/lib/db/medical";
+import { intakeTitle } from "@/lib/db/intakeTitle";
+import { carriedValues, earlierIntakes } from "@/lib/intake/carryForward";
+import { runChatTurn, type ChatMessage } from "@/lib/claude/chatTurn";
+import {
+  buildCard,
+  collectingFrom,
+  computeProgress,
+  winnerIsModel,
+} from "@/lib/intake/transcript";
+import type { CaptureCard } from "@/lib/intake/transcriptTypes";
+
+export const maxDuration = 120;
+
+/**
+ * Toestemming is geen gespreksonderwerp.
+ *
+ * De `consent.*`-velden zijn een spiegel van public.consents, en dat is het
+ * juridische register: versie van de tekst, tijdstip, IP, user agent. Dat wordt
+ * alleen op het toestemmingsscherm geschreven.
+ *
+ * Zonder deze filter kan de assistent ernaar vragen (ze staan als openstaande
+ * velden in de gatenlijst) en het antwoord als dossierveld wegschrijven. Dat is
+ * niet theoretisch: lib/notion/sync.ts poort de medische samenvatting op de
+ * waarde van `consent.share_with_practitioners`. Een "ja hoor, stuur maar naar
+ * mijn kinesist" in een chatbericht zou dus een klinische samenvatting naar een
+ * werkomgeving van een derde openen, terwijl er geen consentregistratie bestaat
+ * die zegt dat de atleet dat ooit heeft afgesproken.
+ *
+ * Toestemming vraag je met een vinkje en een versienummer, niet in een gesprek.
+ */
+function isConsentField(fieldKey: string): boolean {
+  return fieldKey.startsWith("consent.");
+}
+
+/**
+ * Aanleidingen voor een beurt waarin de atleet niets getypt heeft.
+ *
+ * Een vaste lijst, geen vrije tekst uit de body: dit wordt als user-bericht aan
+ * het model gegeven, en een client die daar zelf tekst in mag zetten schrijft de
+ * prompt mee. De tekst wordt nooit opgeslagen in chat_messages.
+ */
+/**
+ * Eén beurt van het intakegesprek.
+ *
+ * De assistent vraagt alleen naar velden die volgens de volledigheidscontrole
+ * ontbreken of tegenstrijdig zijn. Dat is het verschil met een formulier: de
+ * atleet die zijn medische verslagen al geupload heeft, krijgt die vragen niet
+ * meer. Daar zit de tijdswinst.
+ *
+ * Wat de atleet antwoordt wordt een voorstel met `proposedBy: 'athlete'` en zijn
+ * eigen woorden als citaat. Dat verslaat een modelvoorstel uit een document,
+ * maar niet een correctie van de coach.
+ */
+export async function POST(request: Request) {
+  try {
+    const t = await apiMessages();
+    const session = await requireEditableIntake();
+
+    if (!session.consentGrantedAt) {
+      return badRequest(t("consentFirst"));
+    }
+
+    const body = (await request.json().catch(() => ({}))) as {
+      message?: string;
+      nudge?: NudgeKey;
+    };
+    // Antwoord van de atleet eerst opslaan, dan pas het model erbij halen. Zo
+    // is een klapper in de modelcall geen verloren antwoord.
+    if (body.message?.trim()) {
+      await query(
+        "insert into public.chat_messages (intake_id, role, content) values ($1, 'user', $2)",
+        [session.intakeId, body.message.trim()],
+      );
+    }
+
+    // Een intake blijft kort; de limiet is een plafond, geen paginatie.
+    const history = await query<{ role: string; content: string }>(
+      "select role, content from public.chat_messages where intake_id = $1 order by id limit 60",
+      [session.intakeId],
+    );
+
+    const state = await syncDossier(session.intakeId, session.locale);
+
+    // Wat deze atleet bij een eerdere intake al gaf. Alleen om te laten
+    // bevestigen; er staat niets van in het dossier tot hij dat doet.
+    //
+    // En daarnaast: waar het toen over ging. Dat tweede is context en geen
+    // waarde, dus het loopt langs een ander pad en er komt geen voorstel uit.
+    // Zie lib/intake/carryForward.ts voor waarom dat twee dingen zijn.
+    const [carried, earlier] = await Promise.all([
+      carriedValues({
+        athleteId: session.athleteId,
+        intakeId: session.intakeId,
+        locale: session.locale,
+      }),
+      earlierIntakes({
+        athleteId: session.athleteId,
+        intakeId: session.intakeId,
+      }),
+    ]);
+
+    const turn = await runChatTurn({
+      history: (history ?? []) as ChatMessage[],
+      gaps: state.gaps.filter((gap) => !isConsentField(gap.fieldKey)),
+      definitions: state.definitions,
+      locale: session.locale,
+      // Alleen wat in DIT dossier nog open staat: een veld dat de atleet deze
+      // keer al beantwoord heeft hoeft niet nog eens bevestigd te worden.
+      carried: carried.filter((item) =>
+        state.gaps.some((gap) => gap.fieldKey === item.fieldKey),
+      ),
+      earlier,
+      nudge: body.nudge ? NUDGES[session.locale][body.nudge] : undefined,
+    });
+
+    // Tweede slot op hetzelfde: ook als het model een consentveld zou teruggeven
+    // omdat de atleet er zelf over begint, wordt het niet weggeschreven.
+    const captured = turn.captured.filter((item) => !isConsentField(item.fieldKey));
+
+    // "Weet ik niet" is een geldig eindpunt, en het sluit het gat. Zonder dit
+    // blijft het veld gevraagd worden en stopt het gesprek nooit. Consent is ook
+    // hier uitgesloten: die velden worden op het toestemmingsscherm gezet, niet
+    // in een gesprek, en dus ook niet overgeslagen in een gesprek.
+    const skipped = turn.skipped.filter((item) => !isConsentField(item.fieldKey));
+    if (skipped.length > 0) {
+      await skipFields(session.intakeId, skipped);
+    }
+
+    if (captured.length > 0) {
+      await addProposals(
+        session.intakeId,
+        captured.map((item) => ({
+          fieldKey: item.fieldKey,
+          value: item.value,
+          proposedBy: "athlete" as const,
+          // Wat de atleet zei is zijn eigen woord; er valt niets te verifieren
+          // tegen een brondocument, dus quote_verified blijft false en het veld
+          // komt op 'medium' tot de coach het aftikt.
+          sourceQuote: item.quote,
+        })),
+      );
+    }
+
+    await query(
+      `insert into public.chat_messages (intake_id, role, content, about_field_key)
+       values ($1, 'assistant', $2, $3)`,
+      [session.intakeId, turn.reply, turn.aboutFieldKey],
+    );
+
+    const after = await syncDossier(session.intakeId, session.locale);
+
+    // Het scherm toont per opgepikt veld een kaart met label, waarde en
+    // betrouwbaarheid. Alleen de sleutels teruggeven zou de client dwingen om
+    // daarna alsnog de hele veldenlijst op te halen.
+    //
+    // De kaarten worden met dezelfde functies gebouwd als in de transcriptie,
+    // want de client plakt beide in één lijst. Twee bouwers zouden vroeg of laat
+    // twee verschillende waarheden opleveren voor hetzelfde veld.
+    const proposalById = new Map((await getProposals(session.intakeId)).map((p) => [p.id, p]));
+    const definitionByKey = new Map(after.definitions.map((d) => [d.key, d]));
+
+    const cards: CaptureCard[] = [];
+    for (const item of captured) {
+      const definition = definitionByKey.get(item.fieldKey);
+      if (!definition) continue;
+      const resolved = after.resolved.get(item.fieldKey);
+      cards.push(
+        buildCard(definition, resolved, winnerIsModel(resolved, proposalById), session.locale),
+      );
+    }
+
+    // De skips gaan mee terug zodat het gesprek ze meteen toont. Ze komen ook
+    // uit de transcriptie na een herlaadbeurt; dit scheelt een ronde en zorgt
+    // dat de atleet het ziet op het moment dat het gebeurt.
+    const definitionFor = (fieldKey: string) => definitionByKey.get(fieldKey);
+
+    return NextResponse.json({
+      reply: turn.reply,
+      captured: cards,
+      skipped: skipped.flatMap((item) => {
+        const definition = definitionFor(item.fieldKey);
+        if (!definition) return [];
+        return [
+          {
+            fieldKey: item.fieldKey,
+            label: session.locale === "nl" ? definition.labelNl : definition.labelEn,
+            reason: item.reason,
+          },
+        ];
+      }),
+      // Meegestuurd en niet pas bij de volgende keer laden opgehaald: een beurt
+      // waarin de pijnlocatie wordt opgepikt hoort de kop meteen te veranderen.
+      // Eén kleine query naast een modelcall van seconden.
+      title: await intakeTitle(session.intakeId),
+      collecting: collectingFrom(after.gaps, session.locale),
+      progress: computeProgress(
+        after.definitions,
+        after.gaps,
+        after.completeness.requiredFilled,
+        after.completeness.requiredTotal,
+      ),
+      done: turn.done || after.gaps.length === 0,
+      completeness: after.completeness,
+      openGaps: after.gaps.length,
+    });
+  } catch (error) {
+    return handleError(error);
+  }
+}

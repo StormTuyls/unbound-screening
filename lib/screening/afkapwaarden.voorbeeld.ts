@@ -13,7 +13,7 @@
 // Drie tests, genoeg om elke vorm te laten zien: vier banden per zijde, twee
 // banden, en een test zonder regel waarbij de tester zelf scoort.
 
-import { type Library, BOUNDARY, SOURCE, simple } from "./libraryShape";
+import { type AboutTexts, type Library, BOUNDARY, SOURCE, simple } from "./libraryShape";
 
 /** Staat op true in het echte bestand. Zie library.ts. */
 export const ECHT = false;
@@ -67,3 +67,23 @@ export const PARTS: Library[] = [
     protocolConfirmed: false,
   }),
 ];
+
+/**
+ * Uitleg per test, naast de testnaam in de app. Verzonnen, zoals de tests.
+ * Alleen een beginwaarde: de seed vult hiermee wat leeg is, daarna wordt de
+ * uitleg bij de referentiewaarden in de app bijgehouden.
+ */
+export const ABOUT: AboutTexts = {
+  "voorbeeld.hoek_per_zijde": {
+    nl: "Een verzonnen hoekmeting per zijde, om het invoerscherm te kunnen bouwen.",
+    en: "A made-up angle measured per side, to build the entry screen against.",
+  },
+  "voorbeeld.afstand_twee_banden": {
+    nl: "Een verzonnen afstand met twee banden.",
+    en: "A made-up distance with two bands.",
+  },
+  "voorbeeld.score_zonder_regel": {
+    nl: "Een verzonnen score zonder referentieregel.",
+    en: "A made-up score without a reference rule.",
+  },
+};

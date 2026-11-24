@@ -1,19 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { createClient } from "@/lib/supabase/browser";
 import { AuthShell } from "@/components/auth/AuthShell";
 
 /**
- * Een nieuw wachtwoord kiezen na een herstelmail.
+ * Een wachtwoord kiezen via een eenmalige link: wachtwoord vergeten, of een
+ * uitnodiging.
  *
- * De sessie is er al: de link ging langs /auth/callback en die heeft hem
- * opgezet. Hier wordt dus geen token uit de URL gelezen, en er staat er ook
- * geen in; dat scheelt een tweede plek waar een linkformaat afgehandeld moet
- * worden, en het houdt de token uit de adresbalk en uit de logs.
+ * De token staat in het fragment (#token=...), niet in de query. Een browser
+ * stuurt het fragment nooit naar de server, dus het belandt niet in de logs
+ * van de app of van de proxy ervoor, en niet in een Referer. Pas bij het
+ * opslaan gaat hij in de body naar /api/auth/reset, dat hem meteen opgebruikt.
  *
  * Geen huidig wachtwoord, in tegenstelling tot het wijzigscherm op het profiel.
  * Wie hier komt is per definitie iemand die het niet meer weet; de mail is het
@@ -22,9 +22,23 @@ import { AuthShell } from "@/components/auth/AuthShell";
  * Daarna naar de voordeur en niet naar een vast scherm: die stuurt een atleet
  * naar zijn thuisscherm en een behandelaar naar de werklijst.
  */
-export function ResetPassword({ signedIn }: { signedIn: boolean }) {
+const subscribe = (onChange: () => void) => {
+  window.addEventListener("hashchange", onChange);
+  return () => window.removeEventListener("hashchange", onChange);
+};
+
+export function ResetPassword() {
   const t = useTranslations("password");
+  const tAuth = useTranslations("auth");
+  const [show, setShow] = useState(false);
+  // htmlFor: zonder wijst het label naar de toonknop, het eerste labelbare kind.
+  const passwordId = useId();
   const router = useRouter();
+  // null op de server en tijdens het hydrateren: dan toont het scherm het
+  // formulier en niet meteen "deze link werkt niet meer".
+  const hash = useSyncExternalStore(subscribe, () => window.location.hash, () => null);
+  const token = hash === null ? null : new URLSearchParams(hash.slice(1)).get("token");
+  const signedIn = hash === null || Boolean(token);
 
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -39,10 +53,17 @@ export function ResetPassword({ signedIn }: { signedIn: boolean }) {
     setBusy(true);
     setError(null);
     try {
-      const { error: update } = await createClient().auth.updateUser({ password: next });
-      if (update) throw new Error(update.message);
+      const response = await fetch("/api/auth/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, password: next }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { next?: string; error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error === "expired" ? t("resetExpired") : t("changeFailed"));
+      }
 
-      router.replace("/");
+      router.replace(payload.next ?? "/");
       router.refresh();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : t("changeFailed"));
@@ -81,12 +102,22 @@ export function ResetPassword({ signedIn }: { signedIn: boolean }) {
             }}
             className="mt-6"
           >
-            <label className="block">
-              <span className="text-label uppercase text-ink-faint">{t("new")}</span>
+            <label className="block" htmlFor={passwordId}>
+              <span className="flex items-center justify-between">
+                <span className="text-label uppercase text-ink-faint">{t("new")}</span>
+                <button
+                  type="button"
+                  onClick={() => setShow((value) => !value)}
+                  className="-my-2.5 inline-flex min-h-11 items-center text-xs font-medium text-brand-700"
+                >
+                  {show ? tAuth("hide") : tAuth("show")}
+                </button>
+              </span>
               <input
+                id={passwordId}
                 value={next}
                 onChange={(event) => setNext(event.target.value)}
-                type="password"
+                type={show ? "text" : "password"}
                 minLength={8}
                 autoComplete="new-password"
                 autoFocus
@@ -99,7 +130,7 @@ export function ResetPassword({ signedIn }: { signedIn: boolean }) {
               <input
                 value={confirm}
                 onChange={(event) => setConfirm(event.target.value)}
-                type="password"
+                type={show ? "text" : "password"}
                 minLength={8}
                 autoComplete="new-password"
                 className={field}

@@ -1,7 +1,17 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
+import { readFileSync } from "node:fs";
+
+// De beveiligingsheaders staan in vercel.json. Buiten Vercel leest niemand dat
+// bestand, dus zet de app ze hier zelf, uit dezelfde bron.
+const vercelHeaders: { source: string; headers: { key: string; value: string }[] }[] =
+  JSON.parse(readFileSync(new URL("./vercel.json", import.meta.url), "utf8")).headers ?? [];
 
 const nextConfig: NextConfig = {
+  // Een zelfstandige server in .next/standalone, voor de container en later de
+  // eigen server. Vercel negeert dit.
+  output: "standalone",
+
   // Medische data: geen bronmaps in productiebundels.
   productionBrowserSourceMaps: false,
 
@@ -11,6 +21,68 @@ const nextConfig: NextConfig = {
   // probleem dus alleen op. Uit betekent niet blind: compile- en runtimefouten
   // komen nog steeds in de terminal en de console.
   devIndicators: false,
+
+  /**
+   * De oude /coach-paden.
+   *
+   * Dit pad botste met de intake: beide apps hadden /coach, /coach/login en
+   * een pagina onder /coach/athletes/<id>. Op twee domeinen merkt niemand dat,
+   * achter één domein kan er maar één winnen. Deze helft heet daarom /praktijk,
+   * en dat is ook wat de code al zei: overal "behandelaar", alleen de route
+   * zei "coach".
+   *
+   * 307 en geen 308, dus omkeerbaar. De intake linkt hierheen met
+   * NEXT_PUBLIC_SCREENING_URL + /coach/library, en zolang die link niet mee
+   * verhuisd is houdt deze regel hem heel. Een blijvende redirect zou de
+   * browser het oude pad laten onthouden, en deze pagina's staan toch op
+   * noindex, dus er valt geen vindbaarheid mee te winnen.
+   */
+  /**
+   * Nooit cachen wat achter een login staat.
+   *
+   * Stond in proxy.ts, dat daarnaast de Supabase-sessie verlengde. Die sessie
+   * bestaat niet meer (lib/auth/session.ts), dus de proxy ook niet; dit is wat
+   * ervan overbleef. Bijvangst: geen proxy meer betekent ook geen buffer van
+   * 10 MB meer op elke aanvraag.
+   *
+   * /api/health en /api/cron horen er niet bij: geen gebruiker, geen dossier.
+   */
+  async headers() {
+    const privatePaths = [
+      "/",
+      "/home/:path*",
+      "/start/:path*",
+      "/consent/:path*",
+      "/intake/:path*",
+      "/profile/:path*",
+      "/report/:path*",
+      "/metingen/:path*",
+      "/praktijk/:path*",
+      "/review/:path*",
+      "/auth/:path*",
+      "/api/auth/:path*",
+      "/api/athlete/:path*",
+      "/api/coach/:path*",
+      "/api/intake/:path*",
+      "/api/review/:path*",
+      "/api/locale/:path*",
+      "/api/purge",
+    ];
+    return [
+      ...vercelHeaders,
+      ...privatePaths.map((source) => ({
+        source,
+        headers: [{ key: "Cache-Control", value: "private, no-store" }],
+      })),
+    ];
+  },
+
+  async redirects() {
+    return [
+      { source: "/coach", destination: "/praktijk", permanent: false },
+      { source: "/coach/:path*", destination: "/praktijk/:path*", permanent: false },
+    ];
+  },
 };
 
 /**

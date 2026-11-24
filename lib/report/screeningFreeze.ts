@@ -18,7 +18,7 @@ import {
  * Dezelfde regel als bij de intake: je exporteert nooit iets dat geen
  * opgeslagen versie is. Het verschil is wat er kan verschuiven. Bij een intake
  * was dat de modelsamenvatting; hier zijn het de DREMPELS. De praktijk stelt op
- * /coach/library een referentieregel bij, en vanaf dat moment zou dezelfde
+ * /praktijk/library een referentieregel bij, en vanaf dat moment zou dezelfde
  * meting een andere band krijgen. Een afdruk van vorig jaar hoort dat niet mee
  * te maken.
  *

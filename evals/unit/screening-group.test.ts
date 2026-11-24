@@ -17,7 +17,8 @@ import {
 /** Een rij met alles ingevuld, zodat een test alleen zegt wat hij bedoelt. */
 function row(over: Partial<ResultRow> & { metricKey: string }): ResultRow {
   return {
-    testLabelNl: "Test", testLabelEn: "Test", metricLabelNl: "Test",
+    testLabelNl: "Test", testLabelEn: "Test", testAboutNl: null, testAboutEn: null,
+    laterality: "per_side", direction: "higher_better", metricLabelNl: "Test",
     metricLabelEn: "Test", label: "Test", block: "core", side: "bilateral",
     kind: "absolute", value: 10, unit: "cm", decimals: 1, status: "computed",
     unavailableReason: null, bandStatus: null, bandScore: null, bands: null,
