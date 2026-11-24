@@ -96,9 +96,11 @@ async function main() {
     "select id from public.athletes where retention_basis = $1",
     [MERK],
   );
+  // Opruimen gaat als admin: intake_server mag bewust geen notities of
+  // metingen wissen, dus via de app-verbinding faalt een tweede run.
   for (const rij of oud) {
-    await query("delete from medical.screening_notes where athlete_id = $1", [rij.id]);
-    await query(
+    await admin("delete from medical.screening_notes where athlete_id = $1", [rij.id]);
+    await admin(
       `delete from medical.measurements
         where test_item_id in (
           select ti.id from medical.test_items ti
@@ -106,18 +108,18 @@ async function main() {
            where s.athlete_id = $1)`,
       [rij.id],
     );
-    await query(
+    await admin(
       `delete from medical.derived_results
         where session_id in (select id from medical.screening_sessions where athlete_id = $1)`,
       [rij.id],
     );
-    await query(
+    await admin(
       `delete from medical.test_items
         where session_id in (select id from medical.screening_sessions where athlete_id = $1)`,
       [rij.id],
     );
-    await query("delete from medical.screening_reports where athlete_id = $1", [rij.id]);
-    await query("delete from medical.screening_sessions where athlete_id = $1", [rij.id]);
+    await admin("delete from medical.screening_reports where athlete_id = $1", [rij.id]);
+    await admin("delete from medical.screening_sessions where athlete_id = $1", [rij.id]);
     await admin("delete from public.athletes where id = $1", [rij.id]);
   }
 
