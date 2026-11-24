@@ -50,7 +50,8 @@ const createSchema = z.object({
 
 const updateSchema = z.object({
   id: z.string().uuid(),
-  kind: z.enum(["physio", "coach"]).optional(),
+  // null is "geen discipline": dan kan geen atleet deze persoon kiezen.
+  kind: z.enum(["physio", "coach"]).nullable().optional(),
   role: z.enum(["coach", "admin"]).optional(),
   archived: z.boolean().optional(),
 });
