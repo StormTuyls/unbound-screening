@@ -574,7 +574,8 @@
       "core": "Rompcontrole",
       "movement_ll": "Bewegingskwaliteit",
       "forcedecks": "Isometrische push",
-      "strength_ul": "Kracht bovenste lidmaat"
+      "strength_ul": "Kracht bovenste lidmaat",
+      "voorbeeld": "Voorbeeld"
     },
     "unavailable": {
       "missing_input": "niet gemeten",

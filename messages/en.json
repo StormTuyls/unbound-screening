@@ -574,7 +574,8 @@
       "core": "Core control",
       "movement_ll": "Movement quality",
       "forcedecks": "Isometric push",
-      "strength_ul": "Upper-limb strength"
+      "strength_ul": "Upper-limb strength",
+      "voorbeeld": "Example"
     },
     "unavailable": {
       "missing_input": "not measured",
