@@ -1,5 +1,11 @@
 import type { NextConfig } from "next";
 import createNextIntlPlugin from "next-intl/plugin";
+import { readFileSync } from "node:fs";
+
+// De beveiligingsheaders staan in vercel.json. Buiten Vercel leest niemand dat
+// bestand, dus zet de app ze hier zelf, uit dezelfde bron.
+const vercelHeaders: { source: string; headers: { key: string; value: string }[] }[] =
+  JSON.parse(readFileSync(new URL("./vercel.json", import.meta.url), "utf8")).headers ?? [];
 
 const nextConfig: NextConfig = {
   // Een zelfstandige server in .next/standalone, voor de container en later de
@@ -62,10 +68,13 @@ const nextConfig: NextConfig = {
       "/api/locale/:path*",
       "/api/purge",
     ];
-    return privatePaths.map((source) => ({
-      source,
-      headers: [{ key: "Cache-Control", value: "private, no-store" }],
-    }));
+    return [
+      ...vercelHeaders,
+      ...privatePaths.map((source) => ({
+        source,
+        headers: [{ key: "Cache-Control", value: "private, no-store" }],
+      })),
+    ];
   },
 
   async redirects() {
