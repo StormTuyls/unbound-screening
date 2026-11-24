@@ -58,6 +58,9 @@ export interface LibraryTest {
   laterality: "bilateral" | "per_side" | "either";
   /** Klinische screening of performancebatterij. */
   domain: "clinical" | "performance";
+  /** Uitleg bij de test, of null als de praktijk er nog geen schreef. */
+  aboutNl: string | null;
+  aboutEn: string | null;
   protocolId: string;
   protocolConfirmed: boolean;
   metricKey: string;
@@ -131,7 +134,7 @@ export async function getLibrary(
 ): Promise<LibraryTest[]> {
   const rows = await query<Record<string, unknown>>(
     `select t.key as test_key, t.block, t.sort_order, t.label_nl, t.label_en,
-            t.laterality, t.domain,
+            t.laterality, t.domain, t.about_nl, t.about_en,
             p.id as protocol_id, p.protocol_confirmed,
             m.key as metric_key, m.label_nl as metric_label_nl,
             m.label_en as metric_label_en, m.unit, m.direction, m.decimals,
@@ -207,6 +210,8 @@ export async function getLibrary(
       labelEn: row.label_en as string,
       laterality: row.laterality as LibraryTest["laterality"],
       domain: row.domain as LibraryTest["domain"],
+      aboutNl: (row.about_nl as string | null) ?? null,
+      aboutEn: (row.about_en as string | null) ?? null,
       protocolId: row.protocol_id as string,
       protocolConfirmed: row.protocol_confirmed as boolean,
       metricKey: row.metric_key as string,
@@ -559,6 +564,10 @@ export interface SessionView {
     metricKey: string;
     testLabelNl: string;
     testLabelEn: string;
+    testAboutNl: string | null;
+    testAboutEn: string | null;
+    laterality: "bilateral" | "per_side" | "either";
+    direction: Direction;
     metricLabelNl: string;
     metricLabelEn: string;
     block: string;
@@ -663,7 +672,7 @@ export async function getSession(
             m.label_nl as metric_label_nl, m.label_en as metric_label_en, m.decimals,
             m.cover_rank,
             t.label_nl as test_label_nl, t.label_en as test_label_en,
-            t.block, t.sort_order,
+            t.block, t.sort_order, t.about_nl, t.about_en, t.laterality, m.direction,
             p.protocol_confirmed, r.source_note, r.source_citation, r.evidence,
             r.version as rule_version,
             -- De banden zelf, zodat een rapport kan tekenen WAAR een waarde
@@ -709,6 +718,10 @@ export async function getSession(
       metricKey: row.metric_key as string,
       testLabelNl: row.test_label_nl as string,
       testLabelEn: row.test_label_en as string,
+      testAboutNl: (row.about_nl as string | null) ?? null,
+      testAboutEn: (row.about_en as string | null) ?? null,
+      laterality: row.laterality as "bilateral" | "per_side" | "either",
+      direction: row.direction as Direction,
       metricLabelNl: row.metric_label_nl as string,
       metricLabelEn: row.metric_label_en as string,
       block: row.block as string,

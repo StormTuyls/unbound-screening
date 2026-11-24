@@ -17,6 +17,8 @@ import type { ResultBand, SessionView } from "@/lib/db/screening";
 export type ResultRow = SessionView["results"][number] & {
   /** De testnaam in de taal van de lezer, opgelost door de pagina. */
   label: string;
+  /** De uitleg bij de test in dezelfde taal, of null. */
+  about?: string | null;
 };
 
 /** Zelfde volgorde als in het rapport, zodat links nooit ergens rechts staat. */

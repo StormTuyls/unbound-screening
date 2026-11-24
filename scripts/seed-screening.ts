@@ -43,8 +43,8 @@ async function main() {
       await db.query(
         `insert into public.test_definitions
            (key, block, sort_order, label_nl, label_en, laterality, domain,
-            body_region, source_note)
-         values ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            body_region, source_note, about_nl, about_en)
+         values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          on conflict (key) do update set
            block = excluded.block,
            sort_order = excluded.sort_order,
@@ -53,12 +53,15 @@ async function main() {
            laterality = excluded.laterality,
            domain = excluded.domain,
            body_region = excluded.body_region,
-           source_note = excluded.source_note`,
+           source_note = excluded.source_note,
+           about_nl = excluded.about_nl,
+           about_en = excluded.about_en`,
         // Weggelaten domain is klinisch: de 26 bestaande tests zijn dat allemaal
         // en hoeven er niets over te zeggen. De kolom zelf heeft geen default,
         // zodat dit de enige plek is waar die aanname staat.
         [t.key, t.block, t.sortOrder, t.labelNl, t.labelEn, t.laterality,
-         t.domain ?? "clinical", t.bodyRegion ?? null, t.sourceNote ?? null],
+         t.domain ?? "clinical", t.bodyRegion ?? null, t.sourceNote ?? null,
+         t.aboutNl ?? null, t.aboutEn ?? null],
       );
     }
 

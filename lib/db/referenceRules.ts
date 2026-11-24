@@ -27,6 +27,9 @@ export interface RuleView {
   metricKey: string;
   testLabelNl: string;
   testLabelEn: string;
+  testAboutNl: string | null;
+  testAboutEn: string | null;
+  laterality: "bilateral" | "per_side" | "either";
   block: string;
   unit: string;
   direction: string;
@@ -53,6 +56,9 @@ function toView(row: Record<string, unknown>): RuleView | null {
     metricKey: row.metric_key as string,
     testLabelNl: row.test_label_nl as string,
     testLabelEn: row.test_label_en as string,
+    testAboutNl: (row.about_nl as string | null) ?? null,
+    testAboutEn: (row.about_en as string | null) ?? null,
+    laterality: row.laterality as RuleView["laterality"],
     block: row.block as string,
     unit: row.unit as string,
     direction: row.direction as string,
@@ -74,6 +80,7 @@ const SELECT = `
          r.classification_enabled, r.evidence, r.source_citation, r.source_note,
          m.unit, m.direction, m.decimals,
          t.label_nl as test_label_nl, t.label_en as test_label_en, t.block, t.sort_order,
+         t.about_nl, t.about_en, t.laterality,
          p.protocol_confirmed,
          (select count(*) from public.reference_rules v where v.rule_key = r.rule_key) as versions
     from public.reference_rules r

@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { postJson } from "@/lib/postJson";
 import { matchBand, type Band } from "@/lib/screening/bands";
 import { zoneFill } from "@/components/report/BandStrip";
+import { TestInfo } from "@/components/coach/TestInfo";
 
 /**
  * Invoerscherm voor een screening.
@@ -38,6 +39,10 @@ export interface EntryTest {
   bands: Band[] | null;
   protocolConfirmed: boolean;
   note: string | null;
+  /** Uitleg bij de test, voor het info-knopje naast de naam. */
+  about: string | null;
+  direction: string;
+  laterality: string;
 }
 
 /** Alleen de volgorde; de namen komen uit de berichtencatalogus. */
@@ -231,7 +236,18 @@ export function ScreeningEntry({
                     className="grid gap-x-4 gap-y-2 py-3 sm:grid-cols-[minmax(0,1fr)_auto_13rem] sm:items-center"
                   >
                     <div className="min-w-0">
-                      <span className="block text-base">{test.label}</span>
+                      <span className="flex items-center gap-0.5 text-base">
+                        {test.label}
+                        <TestInfo
+                          name={test.label}
+                          about={test.about}
+                          unit={test.unit}
+                          direction={test.direction}
+                          laterality={test.laterality}
+                          bands={test.bands}
+                          protocolConfirmed={test.protocolConfirmed}
+                        />
+                      </span>
                       <span className="text-xs text-ink-muted">
                         {test.unit === "hand_lengths"
                           ? t("handLengths")

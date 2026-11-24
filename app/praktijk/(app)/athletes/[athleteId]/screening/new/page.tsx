@@ -68,6 +68,9 @@ export default async function NewScreeningPage({
       bands: item.rule?.classificationEnabled ? item.rule.bands : null,
       protocolConfirmed: item.protocolConfirmed,
       note: item.ruleNote,
+      about: locale === "nl" ? item.aboutNl : item.aboutEn,
+      direction: item.direction,
+      laterality: item.laterality,
     }));
 
   return (

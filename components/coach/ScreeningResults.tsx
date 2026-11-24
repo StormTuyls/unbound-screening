@@ -11,6 +11,7 @@ import {
   type ResultRow,
 } from "@/lib/screening/group";
 import { unitSuffix } from "@/lib/screening/units";
+import { TestInfo } from "@/components/coach/TestInfo";
 
 export type { ResultRow };
 
@@ -243,6 +244,7 @@ export function ScreeningResults({
                     group.sides.length === 1 && group.sides[0].side !== "left" &&
                     group.sides[0].side !== "right";
                   const direction = group.asymmetry ? asymDirection(group.asymmetry) : null;
+                  const first = group.sides[0] ?? group.asymmetry;
                   return (
                     <tr key={group.metricKey} className="border-b border-rule">
                       {/* Een streep en geen gekleurde rij: een rij in kleur
@@ -257,7 +259,20 @@ export function ScreeningResults({
                               : "border-transparent"
                         }`}
                       >
-                        {group.label}
+                        <span className="inline-flex items-center gap-0.5">
+                          {group.label}
+                          {first && (
+                            <TestInfo
+                              name={group.label}
+                              about={first.about ?? null}
+                              unit={first.unit}
+                              direction={first.direction}
+                              laterality={first.laterality}
+                              bands={group.bands}
+                              protocolConfirmed={first.protocolConfirmed}
+                            />
+                          )}
+                        </span>
                       </td>
 
                       {bilateral ? (

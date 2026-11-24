@@ -6,9 +6,14 @@
  * drie verzonnen tests, genoeg om te bouwen en de validator te draaien.
  */
 
-import { ECHT, PARTS } from "./afkapwaarden";
+import * as afkapwaarden from "./afkapwaarden";
 import { validateBands } from "./bands";
-import type { Library } from "./libraryShape";
+import type { AboutTexts, Library } from "./libraryShape";
+
+const { ECHT, PARTS } = afkapwaarden;
+// Optioneel: afkapwaarden.ts staat niet in git, en een kopie van voor deze
+// export moet blijven werken. Dan heeft geen enkele test uitleg.
+const ABOUT: AboutTexts = (afkapwaarden as { ABOUT?: AboutTexts }).ABOUT ?? {};
 
 export type {
   Library,
@@ -23,7 +28,9 @@ export type { NormaliseKey } from "./derive";
 export const AFKAPWAARDEN_AANWEZIG = ECHT;
 
 export const LIBRARY: Library = {
-  tests: PARTS.flatMap((p) => p.tests),
+  tests: PARTS.flatMap((p) => p.tests).map((t) =>
+    ABOUT[t.key] ? { ...t, aboutNl: ABOUT[t.key].nl, aboutEn: ABOUT[t.key].en } : t,
+  ),
   protocols: PARTS.flatMap((p) => p.protocols),
   metrics: PARTS.flatMap((p) => p.metrics),
   rules: PARTS.flatMap((p) => p.rules),
@@ -77,6 +84,12 @@ export function validateLibrary(library: Library = LIBRARY): string[] {
   );
 
   const testKeys = new Set(library.tests.map((t) => t.key));
+  // Een tikfout in een sleutel laat de uitleg stil wegvallen.
+  if (library === LIBRARY) {
+    for (const key of Object.keys(ABOUT)) {
+      if (!testKeys.has(key)) errors.push(`uitleg: geen test met sleutel '${key}'`);
+    }
+  }
   const metrics = new Map(library.metrics.map((m) => [m.key, m]));
 
   for (const p of library.protocols) {

@@ -4,6 +4,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { checkCoach } from "@/lib/review/access";
 import { listRules } from "@/lib/db/referenceRules";
 import { BandScale } from "@/components/coach/BandScale";
+import { TestInfo } from "@/components/coach/TestInfo";
 import { unitLabel } from "@/lib/screening/units";
 
 export async function generateMetadata() {
@@ -68,10 +69,23 @@ export default async function LibraryPage() {
             </h2>
             <ul className="divide-y divide-hairline border-t border-hairline">
               {items.map((rule) => (
-                <li key={rule.id}>
+                <li key={rule.id} className="flex items-start gap-1">
+                  {/* Buiten de link: een knop in een <a> is geen geldige HTML,
+                      en een tik op de uitleg hoort niet naar de regel te gaan. */}
+                  <span className="pt-3">
+                    <TestInfo
+                      name={name(rule)}
+                      about={locale === "nl" ? rule.testAboutNl : rule.testAboutEn}
+                      unit={rule.unit}
+                      direction={rule.direction}
+                      laterality={rule.laterality}
+                      bands={rule.classificationEnabled ? rule.bands : null}
+                      protocolConfirmed={rule.protocolConfirmed}
+                    />
+                  </span>
                   <Link
                     href={`/praktijk/library/${encodeURIComponent(rule.metricKey)}`}
-                    className="grid min-h-11 gap-x-6 gap-y-2 py-3 transition-colors hover:bg-canvas sm:grid-cols-[minmax(0,1fr)_minmax(0,26rem)_7rem] sm:items-center"
+                    className="grid min-h-11 min-w-0 flex-1 gap-x-6 gap-y-2 py-3 transition-colors hover:bg-canvas sm:grid-cols-[minmax(0,1fr)_minmax(0,26rem)_7rem] sm:items-center"
                   >
                     <span className="min-w-0">
                       <span className="block text-sm">{name(rule)}</span>

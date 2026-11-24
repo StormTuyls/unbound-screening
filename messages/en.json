@@ -879,5 +879,25 @@
     "resetBody": "Someone asked for a new password for this email address. If that was you, choose a new password here:\n\n{link}\n\nThe link works for one hour and once. If you did not ask for this, you need not do anything.",
     "inviteSubject": "You are invited to unbound",
     "inviteBody": "Your practice invites you to fill in your file at unbound. Choose a password through this link and start:\n\n{link}\n\nThe link works for seven days and once."
+  },
+  "testInfo": {
+    "open": "About {test}",
+    "noAbout": "No explanation for this test yet.",
+    "measures": "Measures",
+    "bands": "Bands",
+    "noBand": "no band yet: recorded, not graded",
+    "protocol": "Protocol",
+    "protocolOpen": "not fixed yet, compare over time with care",
+    "direction": {
+      "higher_better": "higher is better",
+      "lower_better": "lower is better",
+      "target_range": "within a range is better",
+      "neutral": "no direction"
+    },
+    "laterality": {
+      "per_side": "per side",
+      "bilateral": "both legs",
+      "either": "per side or both legs"
+    }
   }
 }

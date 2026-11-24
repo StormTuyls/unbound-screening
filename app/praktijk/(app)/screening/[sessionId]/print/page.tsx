@@ -10,6 +10,7 @@ import { AutoPrint } from "@/components/review/AutoPrint";
 import { PRACTICE_NAME } from "@/lib/report/branding";
 import { logAudit } from "@/lib/audit";
 import { unitSuffix } from "@/lib/screening/units";
+import { bandText } from "@/lib/screening/bands";
 
 /**
  * De sneden van het rapport, los van die van de app. Zie .report in
@@ -94,25 +95,6 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
       {children}
     </h2>
   );
-}
-
-/**
- * De drempels van een regel als tekst.
- *
- * Hier staan de getallen die bewust NIET in de strip staan. De strip toont de
- * plaats, de leeswijzer de schaal, en samen zijn ze na te rekenen. Halfopen
- * intervallen, zoals het schema ze overal hanteert: de ondergrens telt mee en
- * de bovengrens niet.
- */
-function bandRanges(bands: SnapshotBand[]): string {
-  return bands
-    .map((b) => {
-      const name = b.status.replace(/_/g, " ");
-      if (b.gte !== undefined && b.lt !== undefined) return `${name} ${b.gte}–${b.lt}`;
-      if (b.gte !== undefined) return `${name} ≥ ${b.gte}`;
-      return `${name} < ${b.lt}`;
-    })
-    .join(" · ");
 }
 
 /**
@@ -627,7 +609,7 @@ export default async function ScreeningPrintPage({
                         )}
                       </td>
                       <td className="py-1.5 pr-3 text-[11.5px] tabular-nums">
-                        {rule.bands ? bandRanges(rule.bands) : "–"}
+                        {rule.bands ? bandText(rule.bands) : "–"}
                       </td>
                       <td className="py-1.5 text-[11px] text-ink-muted">{rule.note}</td>
                     </tr>

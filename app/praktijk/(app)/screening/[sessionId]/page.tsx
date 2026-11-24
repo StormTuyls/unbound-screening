@@ -59,7 +59,11 @@ export default async function ScreeningSessionPage({
 
   // De naam hier opgelost en niet in de component: die is een client en hoeft
   // de locale niet te kennen om een tabel te tekenen.
-  const rows: ResultRow[] = session.results.map((row) => ({ ...row, label: name(row) }));
+  const rows: ResultRow[] = session.results.map((row) => ({
+    ...row,
+    label: name(row),
+    about: locale === "nl" ? row.testAboutNl : row.testAboutEn,
+  }));
 
   // Ook de genormaliseerde rijen: die kunnen een band dragen, dus een band die
   // ontbreekt zegt daar hetzelfde als bij een gemeten waarde. Asymmetrie en

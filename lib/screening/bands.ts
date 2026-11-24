@@ -187,3 +187,23 @@ export function scaleOf(
   }
   return hi > lo ? [lo, hi] : [lo - 1, hi + 1];
 }
+
+/**
+ * De drempels van een regel als tekst: "poor < 75 · fair 75–80 · ...".
+ *
+ * Halfopen, zoals overal: de ondergrens telt mee, de bovengrens niet. Gedeeld
+ * door het printrapport en de uitleg naast een testnaam, zodat beide dezelfde
+ * zin gebruiken.
+ */
+export function bandText(
+  bands: ReadonlyArray<{ status: string; gte?: number; lt?: number }>,
+): string {
+  return bands
+    .map((b) => {
+      const name = b.status.replace(/_/g, " ");
+      if (b.gte !== undefined && b.lt !== undefined) return `${name} ${b.gte}–${b.lt}`;
+      if (b.gte !== undefined) return `${name} ≥ ${b.gte}`;
+      return `${name} < ${b.lt}`;
+    })
+    .join(" · ");
+}
