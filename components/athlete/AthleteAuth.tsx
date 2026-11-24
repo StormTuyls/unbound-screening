@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -34,6 +34,8 @@ export function AthleteAuth({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  // htmlFor: zonder wijst het label naar de toonknop, het eerste labelbare kind.
+  const passwordId = useId();
   const [consented, setConsented] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -134,7 +136,7 @@ export function AthleteAuth({
             />
           </label>
 
-          <label className="mt-4 block">
+          <label className="mt-4 block" htmlFor={passwordId}>
             <span className="flex items-baseline justify-between">
               <span className={label}>{t("password")}</span>
               <button
@@ -146,6 +148,7 @@ export function AthleteAuth({
               </button>
             </span>
             <input
+              id={passwordId}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
               type={showPassword ? "text" : "password"}

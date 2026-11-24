@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import Link from "next/link";
@@ -25,6 +25,8 @@ export function CoachLogin({ next }: { next: string | null }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  // htmlFor: zonder wijst het label naar de toonknop, het eerste labelbare kind.
+  const passwordId = useId();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,7 +90,7 @@ export function CoachLogin({ next }: { next: string | null }) {
           />
         </label>
 
-        <label className="mt-4 block">
+        <label className="mt-4 block" htmlFor={passwordId}>
           <span className="flex items-center justify-between">
             <span className="text-label uppercase text-ink-faint">{t("password")}</span>
             <button
@@ -100,6 +102,7 @@ export function CoachLogin({ next }: { next: string | null }) {
             </button>
           </span>
           <input
+            id={passwordId}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             type={showPassword ? "text" : "password"}
